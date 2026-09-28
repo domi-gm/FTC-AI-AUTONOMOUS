@@ -2,6 +2,8 @@
 
 FTC Field + Visuals editor built with Pygame and Pymunk. Includes the BIOBUZZ field, robot and game-piece placement, inventory, scene saving, and collision-checked dragging. World coordinates are in centimetres with the origin at the bottom-left.
 
+The 16 BIOBUZZ AprilTags are shown by default. Press `T` to toggle them and click a tag in selection mode (`V`) to inspect its ID, pattern and cell. Tag positions are a schematic 2D overlay, not calibrated 3D camera poses or simulated detections.
+
 ## Run
 
 Python 3.12+:

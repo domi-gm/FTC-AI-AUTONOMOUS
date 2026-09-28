@@ -6,6 +6,7 @@ from pathlib import Path
 import pymunk
 from .field import FIELD_WIDTH, FIELD_HEIGHT, BALL_RADIUS, COLORS, OBSTACLES, zone_at, contains
 from .season import PIECE_RADII, PIECE_MASSES, FLOWERS, CELLS, ROBOT_SLOTS, HIVE_INITIAL_UP, ground_setup, hive_setup
+from .apriltags import APRILTAGS
 
 
 @dataclass
@@ -58,6 +59,8 @@ class World:
         self.space.iterations = 30
         self.space.collision_slop = 0.05
         self.entities = []
+        # Field metadata, not floor bodies or movable scene entities.
+        self.apriltags = APRILTAGS
         self.obstacle_shapes = []
         self.next_id = 1
         self.preset = "custom"

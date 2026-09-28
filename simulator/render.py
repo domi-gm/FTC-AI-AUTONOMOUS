@@ -4,6 +4,7 @@ from pathlib import Path
 import pygame
 from .field import FIELD_WIDTH, FIELD_HEIGHT, TILE, CELL_OUTLINES, STRUCTURE, ZONES, STATIONS, OBSTACLES, COLORS, RED, BLUE, YELLOW
 from .season import CELLS, FLOWERS
+from .apriltags import APRILTAGS, TAG_IMAGE_SIZE_CM
 
 ROOT = Path(__file__).resolve().parents[1]
 BG = (18, 20, 24)
@@ -21,6 +22,38 @@ class Painter:
         self.fonts = {}
         self.reference = pygame.image.load(ROOT / "assets/biobuzz-reference.webp").convert()
         self.reference_scaled = None
+        self.tag_images = {tag.id: pygame.image.load(ROOT / "assets/apriltags" / tag.image_name).convert()
+                           for tag in APRILTAGS}
+        self.tag_scaled = {}
+
+    def tag_image(self, tag, size, rotate=True):
+        """Nearest-neighbour scaling preserves the binary pattern and border."""
+        size = max(10, round(size))
+        angle = round(math.degrees(tag.cluster.layout_heading)) if rotate else 0
+        key = (tag.id, size, angle)
+        if key not in self.tag_scaled:
+            # Bounded cache also supports repeated window resizing.
+            if len(self.tag_scaled) >= 128:
+                self.tag_scaled.clear()
+            scaled = pygame.transform.scale(self.tag_images[tag.id], (size, size))
+            self.tag_scaled[key] = pygame.transform.rotate(scaled, angle)
+        return self.tag_scaled[key]
+
+    def apriltags(self, tags, view, selected_id=None):
+        """Unfolded annotation: underneath-cell tags are deliberately visible."""
+        for tag in tags:
+            center = view.to_screen(tag.layout_center)
+            surface = self.tag_image(tag, TAG_IMAGE_SIZE_CM * view.scale)
+            rect = surface.get_rect(center=center)
+            self.screen.blit(surface, rect)
+            if selected_id == tag.id:
+                pygame.draw.rect(self.screen, CYAN, rect.inflate(6, 6), 2)
+            font_size = 8 if view.scale < 1.8 else 9
+            label = self.text(tag.id, (0, -100), font_size, TEXT, True)
+            label_rect = pygame.Rect(round(center[0] - label.width / 2 - 1), rect.bottom + 2,
+                                     label.width + 2, 15)
+            self.box(label_rect, BG, radius=2)
+            self.text(tag.id, (label_rect.x + 1, label_rect.y), font_size, TEXT, True)
 
     def text(self, value, pos, size=14, color=TEXT, bold=False):
         key = (size, bold)

@@ -8,6 +8,7 @@ import pygame
 from .field import FIELD_WIDTH, FIELD_HEIGHT, BALL_RADIUS, Viewport, COLORS, zone_at
 from .world import World, initial_world
 from .season import PIECE_RADII, FLOWERS, CELLS, ROBOT_SLOTS, storage_label
+from .apriltags import TAG_FAMILY, TAG_SIZE_CM, tag_by_id
 from .render import Painter, ROOT, BG, PANEL, BORDER, TEXT, MUTED, ACCENT, CYAN, RED, BLUE, YELLOW
 
 
@@ -22,12 +23,14 @@ class App:
         self.painter = Painter(self.screen)
         self.world = initial_world()
         self.selected_id = self.world.robot.id
+        self.selected_tag_id = None
         self.mode = "select"
         self.alive = True
         self.grid = False
         self.collisions = False
         self.zones = False
         self.reference = False
+        self.tags_visible = True
         self.inventory_open = False
         self.buttons = []
         self.inputs = {}
@@ -39,7 +42,7 @@ class App:
         self.history = []
         self.future = []
         self.measure = []
-        self.message = "Start Pedro: 56 mingi in model. I = inventar; mingile suprapuse sunt marcate x4."
+        self.message = "56 mingi + 16 AprilTags. T = tag-uri; click pe tag = detalii; I = inventar."
         self.scene_path = ROOT / "scene.json"
         self.list_offset = 0
         self.layout()
@@ -77,6 +80,8 @@ class App:
 
     def action(self, key):
         self.active_input = None
+        if key in ("select", "robot", "yellow", "red", "blue", "measure", "reset", "load", "undo", "redo") or key.startswith(("entity:", "preset:")):
+            self.selected_tag_id = None
         try:
             if key in ("select", "robot", "yellow", "red", "blue", "measure"):
                 self.mode = key
@@ -84,6 +89,11 @@ class App:
                 self.measure.clear()
             elif key in ("grid", "collisions", "zones", "reference"):
                 setattr(self, key, not getattr(self, key))
+            elif key == "tags":
+                self.tags_visible = not self.tags_visible
+                if not self.tags_visible:
+                    self.selected_tag_id = None
+                self.message = "AprilTags: strat schematic; nu reprezinta vizibilitatea unei camere." if self.tags_visible else "AprilTags ascunse. T le afiseaza."
             elif key == "undo":
                 self.undo()
             elif key == "redo":
@@ -202,7 +212,7 @@ class App:
             else:
                 shortcut = {pygame.K_v: "select", pygame.K_1: "robot", pygame.K_2: "yellow",
                             pygame.K_3: "red", pygame.K_4: "blue", pygame.K_g: "grid", pygame.K_c: "collisions",
-                            pygame.K_m: "measure", pygame.K_i: "inventory", pygame.K_DELETE: "delete", pygame.K_r: "reset", pygame.K_ESCAPE: "select"}.get(event.key)
+                            pygame.K_m: "measure", pygame.K_i: "inventory", pygame.K_t: "tags", pygame.K_DELETE: "delete", pygame.K_r: "reset", pygame.K_ESCAPE: "select"}.get(event.key)
             if shortcut:
                 self.action(shortcut)
         elif event.type == pygame.MOUSEWHEEL:
@@ -241,6 +251,12 @@ class App:
                         self.measure.clear()
                     self.measure.append(point)
                 elif self.mode == "select":
+                    tag = next((tag for tag in self.world.apriltags if tag.contains_layout_point(point)), None) if self.tags_visible else None
+                    self.selected_tag_id = tag.id if tag else None
+                    if tag:
+                        self.selected_id = None
+                        self.message = f"AprilTag {tag.id}: {tag.cluster.label}. Reper atasat CELL-ului; XY schematic, fara pose 3D calibrat."
+                        return
                     entity = self.world.pick(point)
                     self.selected_id = entity.id if entity else None
                     if entity:
@@ -303,6 +319,7 @@ class App:
         self.button("redo", "Redo", (w - 429, 16, 73, 35))
         self.button("save", "Salveaza", (w - 337, 16, 95, 35))
         self.button("load", "Incarca", (w - 234, 16, 91, 35))
+        self.button("tags", "T  AprilTags", (w - 133, 16, 113, 35), self.tags_visible)
         pygame.draw.rect(s, PANEL, (0, 67, self.left_width, h - 101))
         pygame.draw.line(s, BORDER, (self.left_width, 67), (self.left_width, h - 34))
         pygame.draw.rect(s, PANEL, (self.right_x, 67, self.right_width, h - 101))
@@ -349,6 +366,8 @@ class App:
                     length=self.world.robot.length if kind == "robot" and self.world.robot else 40.64,
                     color=ghost_color, radius=self.selected.radius if self.mode == "release" and self.selected else None)
                 p.entity(ghost, self.view, ghost=True, valid=self.world.valid(ghost, self.world.robot if kind == "robot" else None))
+            if self.tags_visible:
+                p.apriltags(self.world.apriltags, self.view, self.selected_tag_id)
         if self.measure:
             a = self.measure[0]
             b = self.measure[1] if len(self.measure) == 2 else self.view.to_world(pygame.mouse.get_pos())
@@ -360,12 +379,17 @@ class App:
         s.set_clip(None)
         p.axes(self.view)
         status = "REFERINTA PEDRO / include marcaje desenate" if self.reference else "EDITOR  /  FIELD + VISUALS"
+        if self.tags_visible and not self.reference:
+            status += "  /  APRILTAGS SCHEMATICE"
         p.text(status, (self.view.left, h - 53), 11, CYAN)
 
         rx = self.right_x + 19
         p.text("Inspector", (rx, 87), 18, TEXT, True)
         entity = self.selected
-        if entity:
+        tag = tag_by_id(self.selected_tag_id)
+        if tag:
+            self.draw_tag_inspector(tag, rx)
+        elif entity:
             p.text(f"{'ROBOT' if entity.kind == 'robot' else 'MINGE'}  /  #{entity.id}", (rx, 125), 12, ACCENT, True)
             if entity.on_floor:
                 self.input("x", "X / cm", entity.x, (rx, 177, 116, 36))
@@ -399,9 +423,9 @@ class App:
         info_y = max(575, h - 330)
         pygame.draw.line(s, BORDER, (rx, info_y-13), (w-20, info_y-13))
         p.text("CONTROL", (rx, info_y), 11, MUTED, True)
-        help_lines = ("Click + drag   muta obiectul", "Scroll   roteste cu 5 grade", "M   masoara distanta", "I   inventar mingi", "Ctrl+Z / Ctrl+Y   undo / redo")
+        help_lines = ("Click + drag   muta obiectul", "Scroll   roteste cu 5 grade", "M   masoara / T   AprilTags", "I   inventar mingi", "Ctrl+Z / Ctrl+Y   undo / redo")
         if h < 900:
-            help_lines = ("Click + drag: muta / Scroll: rotire", "M: masurare / Ctrl+Z: undo")
+            help_lines = ("Click + drag: muta / Scroll: rotire", "M: masoara / T: tags / Ctrl+Z: undo")
         for i, line in enumerate(help_lines):
             p.text(line, (rx, info_y + 27+i*23), 11, MUTED)
         self.button("reference", "Compara cu Pedro", (rx, h-122, 246, 34), self.reference)
@@ -415,6 +439,22 @@ class App:
             p.text(f"X {mx:6.2f}   Y {my:6.2f} cm", (w-244, h-26), 11, CYAN)
         if self.inventory_open:
             self.draw_inventory()
+
+    def draw_tag_inspector(self, tag, rx):
+        p = self.painter
+        p.text(f"APRILTAG  /  ID {tag.id}", (rx, 125), 14, CYAN, True)
+        p.text(tag.cluster.label, (rx, 154), 12, COLORS[tag.cluster.cell.alliance], True)
+        self.screen.blit(p.tag_image(tag, 120, rotate=False), (rx + 63, 185))
+        p.text(f"Familie: {TAG_FAMILY}  /  latura: {TAG_SIZE_CM:.3f} cm", (rx, 320), 11)
+        p.text("CELL: " + tag.cluster.cell_key, (rx, 344), 12)
+        x, y = tag.layout_center
+        p.text(f"XY schematic: {x:.2f}, {y:.2f} cm", (rx, 371), 11, CYAN)
+        p.text(f"Offset local pe sticker: {tag.local_u_cm:+.3f} cm", (rx, 395), 10)
+        p.text("Montaj real: dedesubtul CELL-ului.", (rx, 426), 11, MUTED)
+        p.text("Se misca impreuna cu HIVE-ul.", (rx, 449), 11, MUTED)
+        p.text("Z si orientarea 3D: necalibrate.", (rx, 480), 11, YELLOW)
+        p.text("Afisarea nu inseamna detectie.", (rx, 503), 11, MUTED)
+        p.text("T ascunde stratul; V alege obiecte.", (rx, 529), 10, MUTED)
 
     def draw_inventory(self):
         p, s = self.painter, self.screen
