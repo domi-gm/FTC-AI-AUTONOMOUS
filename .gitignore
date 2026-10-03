@@ -19,3 +19,8 @@ scene.tmp
 .idea/
 Thumbs.db
 .DS_Store
+.godot/
+bin/
+obj/
+.vs/
+*.user

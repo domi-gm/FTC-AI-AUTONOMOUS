@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://cxcjfco2ps0uc"]
+
+[ext_resource type="Script" uid="uid://dx8jfbyc8wkt8" path="res://Scenes/Field.cs" id="1_r150o"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_4hf88"]
+size = Vector2(3.5941, 3.5941)
+
+[node name="Main" type="Node3D" unique_id=475746978]
+
+[node name="Field" type="Node3D" parent="." unique_id=890495166]
+script = ExtResource("1_r150o")
+
+[node name="Floor" type="MeshInstance3D" parent="Field" unique_id=2025304983]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.79705, 0, -1.79705)
+mesh = SubResource("PlaneMesh_4hf88")
+
+[node name="TopCamera" type="Camera3D" parent="." unique_id=659179978]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 1.79705, 5, -1.79705)
+projection = 1
+current = true
+size = 4.4
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1465364010]
+transform = Transform3D(0.8660254, 0.4330127, -0.25, 0, 0.5, 0.8660254, 0.5, -0.75, 0.4330127, 0, 0, 0)
