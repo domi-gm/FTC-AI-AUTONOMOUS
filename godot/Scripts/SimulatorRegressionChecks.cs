@@ -6,6 +6,71 @@ using System.Threading.Tasks;
 /// <summary>Scenarii de regresie care nu scriu salvările personale ale utilizatorului.</summary>
 public static class SimulatorRegressionChecks
 {
+    /// <summary>Măsoară corpuri reale în Jolt; formulele nu înlocuiesc simularea.</summary>
+    public static async Task RunGravity(Simulation game)
+    {
+        try
+        {
+            void Check(bool valid,string text) { if (!valid) throw new Exception(text); GD.Print("PASS: "+text); }
+            async Task Frames(int n) { for (int i=0;i<n;i++) await game.ToSignal(game.GetTree(),SceneTree.SignalName.PhysicsFrame); }
+            game.Testing=true; game.Practice=true; game.Reset(); foreach (var r in game.Robots) r.Bot=false;
+            float gravity=(float)ProjectSettings.GetSetting("physics/3d/default_gravity");
+            Vector3 direction=(Vector3)ProjectSettings.GetSetting("physics/3d/default_gravity_vector");
+            Check(Mathf.Abs(gravity-9.80665f)/9.80665f<.001f && direction.DistanceTo(Vector3.Down)<.00001f,
+                "Project gravity is within 0.1% of standard Earth gravity and points down");
+            Check(Mathf.Abs(gravity-ShotPlanner.Gravity)<.00001f,"Planner and physics use the same gravity");
+            // Pornim sus, deasupra obstacolelor, păstrând proprietățile normale ale mingilor.
+            var pollen=game.SpawnBall(PieceKind.Pollen,new(.6f,10,-.8f));
+            var nectar=game.SpawnBall(PieceKind.RedNectar,new(.9f,10,-.8f));
+            await Frames(3);
+            Check(pollen.GravityScale==1 && nectar.GravityScale==1 && pollen.LinearDamp==0 && nectar.LinearDamp==0
+                && pollen.LinearDampMode==RigidBody3D.DampMode.Replace && nectar.LinearDampMode==RigidBody3D.DampMode.Replace,
+                "Both piece types have unit gravity scale and no linear air damping");
+            var start=pollen.Position; var velocity=pollen.LinearVelocity;
+            var nectarStart=nectar.Position; var nectarVelocity=nectar.LinearVelocity;
+            ulong firstFrame=Engine.GetPhysicsFrames();
+            int frames=Engine.PhysicsTicksPerSecond/2; await Frames(frames);
+            float time=(Engine.GetPhysicsFrames()-firstFrame)/(float)Engine.PhysicsTicksPerSecond;
+            float measuredPollen=(velocity.Y-pollen.LinearVelocity.Y)/time;
+            float measuredNectar=(nectarVelocity.Y-nectar.LinearVelocity.Y)/time;
+            float drop=start.Y-pollen.Position.Y;
+            float analytic=-velocity.Y*time+gravity*time*time/2;
+            float discrete=analytic+gravity*time/(2*Engine.PhysicsTicksPerSecond);
+            GD.Print($"GRAVITY measured: pollen {measuredPollen:0.00000}, nectar {measuredNectar:0.00000} m/s^2; masses {pollen.Mass*1000:0.00}/{nectar.Mass*1000:0.00} g");
+            GD.Print($"FALL {time:0.0000} s: measured {drop:0.00000} m; continuous {analytic:0.00000} m; discrete {discrete:0.00000} m");
+            Check(Mathf.Abs(measuredPollen-gravity)<.005f && Mathf.Abs(measuredNectar-gravity)<.005f,
+                "Measured free-fall acceleration matches configured gravity for both masses");
+            Check(Mathf.Abs(drop-discrete)<.002f && Mathf.Abs(drop-analytic)<.025f,
+                "Free-fall distance matches the numerical step and stays within 2.5 cm of continuous physics at 0.5 s");
+            Check(Mathf.Abs(drop-(nectarStart.Y-nectar.Position.Y))<.0002f
+                && Mathf.Abs(velocity.Y-nectarVelocity.Y)<.00001f,
+                "Different ball masses fall equally in the current no-drag model");
+            game.RemoveBall(pollen); game.RemoveBall(nectar);
+            var dropped=game.SpawnBall(PieceKind.Pollen,new(.75f,1.03556f,-1.2f));
+            ulong releaseFrame=Engine.GetPhysicsFrames(); bool bounced=false; float beforeImpact=0;
+            for (int i=0;i<Engine.PhysicsTicksPerSecond;i++)
+            {
+                await Frames(1);
+                if (dropped.LinearVelocity.Y>0) { bounced=true; break; }
+                beforeImpact=-dropped.LinearVelocity.Y;
+            }
+            float fallTime=(Engine.GetPhysicsFrames()-releaseFrame)/(float)Engine.PhysicsTicksPerSecond;
+            float expectedTime=Mathf.Sqrt(2/gravity);
+            GD.Print($"DROP 1 m to floor: {fallTime:0.0000} s; continuous {expectedTime:0.0000} s; last falling speed {beforeImpact:0.000} m/s");
+            Check(bounced && Mathf.Abs(fallTime-expectedTime)<2f/Engine.PhysicsTicksPerSecond,
+                "A ball dropped one metre contacts the floor at the expected time within two physics steps");
+            // Lansare fără obstacole: comparăm predicția cu o minge efectiv integrată.
+            var launched=game.SpawnBall(PieceKind.Pollen,new(.7f,5,-.9f));
+            launched.LinearVelocity=new(1,3,0); await Frames(3);
+            start=launched.Position; velocity=launched.LinearVelocity; firstFrame=Engine.GetPhysicsFrames();
+            await Frames(frames); time=(Engine.GetPhysicsFrames()-firstFrame)/(float)Engine.PhysicsTicksPerSecond;
+            float error=launched.Position.DistanceTo(ShotPlanner.PositionAt(start,velocity,time));
+            GD.Print($"BALLISTIC actual/planner error after {time:0.0000} s: {error*100:0.000} cm");
+            Check(error<.002f,"Ballistic preview matches an actual flying body within 2 mm");
+            GD.Print("ALL GRAVITY CHECKS PASSED"); game.GetTree().Quit();
+        }
+        catch (Exception ex) { GD.PushError("GRAVITY FAILURE: "+ex); game.GetTree().Quit(1); }
+    }
     private static T Find<T>(Node root, Func<T,bool> predicate) where T:Node
     {
         if (root is T candidate && predicate(candidate)) return candidate;

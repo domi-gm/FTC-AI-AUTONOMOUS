@@ -56,3 +56,10 @@ orbit from its actual framing. Long status messages wrap; hover for full text.
 Additional regressions: Godot --headless --path . -- --audit-test. Covers menu
 state, draft edits, snapshot ownership/validation, camera handoff, paths, match
 transition and finished matches without overwriting personal save files.
+
+Gravity check: Godot --headless --path . -- --gravity-test. Measures both ball
+types in Jolt, a one-metre drop onto the real floor, and ballistic prediction
+against a flying body. Configured/measured gravity is 9.81 m/s^2; a one-metre
+drop takes about 0.450 s versus 0.4515 s analytically. At 120 Hz, numerical
+integration adds about 2.04 cm of fall after 0.5 s; the planner accounts for
+this step. Air drag is absent and bounce/friction remain uncalibrated.

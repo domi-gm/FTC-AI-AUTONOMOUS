@@ -44,6 +44,7 @@ public partial class Simulation : Node3D
         if (OS.GetCmdlineUserArgs().Contains("--performance-test")) CallDeferred(MethodName.PerformanceTest);
         if (OS.GetCmdlineUserArgs().Contains("--rendered-preview-test")) CallDeferred(MethodName.RenderedPreviewTest);
         if (OS.GetCmdlineUserArgs().Contains("--audit-test")) CallDeferred(MethodName.AuditTest);
+        if (OS.GetCmdlineUserArgs().Contains("--gravity-test")) CallDeferred(MethodName.GravityTest);
     }
     public void Reset(bool start = true)
     {
@@ -387,6 +388,7 @@ public partial class Simulation : Node3D
         public float Vx { get; set; } public float Vy { get; set; } public float Vz { get; set; } public float Wx { get; set; } public float Wy { get; set; } public float Wz { get; set; }
         public string Container { get; set; } public int Slot { get; set; } }
     public async void AuditTest() => await SimulatorRegressionChecks.Run(this);
+    public async void GravityTest() => await SimulatorRegressionChecks.RunGravity(this);
     public async void RenderedPreviewTest()
     {
         try
