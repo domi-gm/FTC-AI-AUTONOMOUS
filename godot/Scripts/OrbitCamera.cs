@@ -10,6 +10,17 @@ public partial class OrbitCamera : Camera3D
     public void ResetView() { Mode=0; Distance=6.4f; _yaw=.25f; _pitch=.70f; _pan=Vector3.Zero; }
     public void Drag(Vector2 relative, bool pan)
     {
+        if (Mode!=0)
+        {
+            var center=Arena.World(Arena.Center,Arena.Center,.30f)+_pan;
+            if (Mode==2 && Game.Player!=null)
+                center=Game.Player.Position+Vector3.Up*.25f+Game.Player.Front;
+            Vector3 offset=Position-center;
+            Distance=Mathf.Clamp(offset.Length(),2.5f,12);
+            _pan=center-Arena.World(Arena.Center,Arena.Center,.30f);
+            _yaw=Mathf.Atan2(offset.X,offset.Z);
+            _pitch=Mathf.Asin(Mathf.Clamp(offset.Y/Mathf.Max(offset.Length(),.001f),-1,1));
+        }
         Mode=0;
         if (pan)
         {
@@ -18,7 +29,7 @@ public partial class OrbitCamera : Camera3D
             _pan+=(-right*relative.X+up*relative.Y)*Distance*.0015f;
             _pan=_pan.LimitLength(Arena.Size*2);
         }
-        else { _yaw-=relative.X*.006f; _pitch=Mathf.Clamp(_pitch+relative.Y*.004f,.15f,1.45f); }
+        else { _yaw-=relative.X*.006f; _pitch=Mathf.Clamp(_pitch+relative.Y*.004f,.15f,1.56f); }
     }
 
     /// <summary>Transformă direcția de pe ecran în deplasare pe podea (X/Z).</summary>

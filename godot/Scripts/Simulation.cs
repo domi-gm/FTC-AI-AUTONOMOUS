@@ -15,17 +15,17 @@ public partial class Simulation : Node3D
     public PracticePath PathEditor;
     public AimPreview Aim;
     public bool Started, Paused, Practice = true, TwoPlayers;
-    public bool Running => Started && !Paused && (Practice || Elapsed < 158);
+    public bool Finished => !Practice && Elapsed>=158;
+    public bool Running => Started && !Paused && !Finished;
+    public bool DrivingAllowed => Running && (Practice || Elapsed<30 || Elapsed>=38);
     public float Elapsed;
     public int RedScore, BlueScore;
     public string Status = "Godot C# / local prototype";
     public bool AimFlower;
     public RobotProfile Profile = RobotProfile.Load();
     public bool Testing;
-    public int FlowerRed, FlowerBlue;
     private Node3D _session;
     private readonly Dictionary<GamePiece, (Vector3 Linear, Vector3 Angular)> _pausedVelocities = new();
-    private readonly Random _random = new(14712);
     private readonly Vector3[] _flowers = { VisualFactory.Inch(3.9f, Arena.Inches * 2 / 6, 21.5f), VisualFactory.Inch(Arena.Inches * 2 / 6, Arena.Inches - 3.9f, 21.5f), VisualFactory.Inch(Arena.Inches - 3.9f, Arena.Inches * 4 / 6, 21.5f), VisualFactory.Inch(Arena.Inches * 4 / 6, 3.9f, 21.5f) };
     public readonly List<FlowerColumn> Flowers = new();
     public readonly List<GamePiece>[] HumanStock = { new(), new() };
@@ -43,13 +43,14 @@ public partial class Simulation : Node3D
         if (OS.GetCmdlineUserArgs().Contains("--smoke-test")) CallDeferred(MethodName.SmokeTest);
         if (OS.GetCmdlineUserArgs().Contains("--performance-test")) CallDeferred(MethodName.PerformanceTest);
         if (OS.GetCmdlineUserArgs().Contains("--rendered-preview-test")) CallDeferred(MethodName.RenderedPreviewTest);
+        if (OS.GetCmdlineUserArgs().Contains("--audit-test")) CallDeferred(MethodName.AuditTest);
     }
     public void Reset(bool start = true)
     {
         if (_session != null) { RemoveChild(_session); _session.QueueFree(); }
         Balls.Clear(); Robots.Clear(); _pausedVelocities.Clear(); Elapsed = 0; Paused = false; Started = start;
         if (PathEditor != null) PathEditor.Following = false;
-        FlowerRed = FlowerBlue = 0; Flowers.Clear(); HumanStock[0].Clear(); HumanStock[1].Clear();
+        Flowers.Clear(); HumanStock[0].Clear(); HumanStock[1].Clear();
         HumanTokens[0] = HumanTokens[1] = _redLastTips = _blueLastTips = 0;
         _session = new Node3D { Name = "Session" }; AddChild(_session);
         RedHive = new Hive { Red = true, Position = VisualFactory.Inch(Arena.Inches / 2 - 12.75f, Arena.Inches / 2, 43.95f), Name = "RedHive" };
@@ -95,6 +96,7 @@ public partial class Simulation : Node3D
         }
         UpdateScore();
         if (!start) SetFrozen(true);
+        else Hud.ShowPause(false);
     }
     public GamePiece SpawnBall(PieceKind kind, Vector3 position)
     {
@@ -111,7 +113,17 @@ public partial class Simulation : Node3D
     }
     public Vector3 Target(RobotAgent robot)
     {
-        if (AimFlower && !robot.Bot) return _flowers.Where((p, i) => robot.Red ? i < 2 : i >= 2).OrderBy(p => p.DistanceSquaredTo(robot.Position)).First() + Vector3.Up * .05f;
+        if (AimFlower && !robot.Bot)
+        {
+            int begin=robot.Red ? 0 : 2, nearest=begin;
+            float best=float.MaxValue;
+            for (int i=begin;i<begin+2;i++)
+            {
+                float d=_flowers[i].DistanceSquaredTo(robot.Position);
+                if (d<best) { best=d; nearest=i; }
+            }
+            return _flowers[nearest]+Vector3.Up*.05f;
+        }
         var hive = robot.Red ? RedHive : BlueHive;
         // 4.04 inch deasupra axei locale și 4.5 inch în interiorul gurii,
         // ca punctul de țintire din clientul de referință.
@@ -121,9 +133,13 @@ public partial class Simulation : Node3D
     {
         if (!Running) return;
         Elapsed += (float)delta;
-        if (!Practice && Elapsed >= 158) { SetFrozen(true); Hud.ShowResults(); return; }
+        if (Finished) { Elapsed=158; UpdateScore(); SetFrozen(true); Hud.ShowResults(); return; }
         bool transition = !Practice && Elapsed >= 30 && Elapsed < 38;
-        foreach (var robot in Robots) robot.SetPhysicsProcess(!transition);
+        foreach (var robot in Robots)
+        {
+            robot.SetPhysicsProcess(!transition);
+            if (transition) { robot.Velocity=Vector3.Zero; robot.Command=Vector3.Zero; robot.TurnCommand=0; robot.Intake=robot.FireCommand=false; }
+        }
         if (!transition)
         {
             if (!Testing) { ReadPlayer(Player, false); if (TwoPlayers) ReadPlayer(Robots[2], true); }
@@ -228,6 +244,7 @@ public partial class Simulation : Node3D
     public void TogglePause()
     {
         if (!Started) return;
+        if (Finished) { Hud.ShowResults(); return; }
         Paused = !Paused;
         SetFrozen(Paused);
         Hud.ShowPause(Paused);
@@ -244,9 +261,15 @@ public partial class Simulation : Node3D
     }
     public void Save()
     {
-        var snapshot = Capture();
-        using var file = Godot.FileAccess.Open("user://practice.json", Godot.FileAccess.ModeFlags.Write); file.StoreString(JsonSerializer.Serialize(snapshot));
-        Status = "Scene saved: pieces, inventories, HIVE, flowers, timer";
+        try
+        {
+            var snapshot=Capture();
+            using var file=Godot.FileAccess.Open("user://practice.json",Godot.FileAccess.ModeFlags.Write);
+            if (file==null) throw new Exception("Cannot open save file: "+Godot.FileAccess.GetOpenError());
+            file.StoreString(JsonSerializer.Serialize(snapshot));
+            Status="Scene saved: pieces, inventories, HIVE, flowers, timer";
+        }
+        catch (Exception ex) { Status="Cannot save: "+ex.Message; }
     }
     public bool Load()
     {
@@ -255,6 +278,7 @@ public partial class Simulation : Node3D
         {
             var data = JsonSerializer.Deserialize<Snapshot>(Godot.FileAccess.GetFileAsString("user://practice.json"));
             Restore(data);
+            if (!Finished) Hud.ShowPause(false);
             Status = "Scene restored";
             return true;
         }
@@ -275,7 +299,7 @@ public partial class Simulation : Node3D
         }
         return new Snapshot
         {
-            Version = 2, Practice = Practice, Time = Elapsed, TwoPlayers = TwoPlayers, Profile = Profile,
+            Version = 2, Practice = Practice, Time = Elapsed, TwoPlayers = TwoPlayers, Profile = Profile.Copy(),
             AimFlower = AimFlower,
             RedAngle = RedHive.Angle, BlueAngle = BlueHive.Angle, RedSide = RedHive.UpSide, BlueSide = BlueHive.UpSide,
             RedAngularVelocity = RedHive.AngularVelocity, BlueAngularVelocity = BlueHive.AngularVelocity,
@@ -296,7 +320,8 @@ public partial class Simulation : Node3D
         if (data == null || data.Version != 2 || data.Robots?.Length != 4 || data.Balls == null || data.Tokens?.Length != 2) throw new Exception("Unsupported snapshot");
         if (!float.IsFinite(data.Time+data.RedAngle+data.BlueAngle+data.RedAngularVelocity+data.BlueAngularVelocity)
             || data.Time<0 || Mathf.Abs(data.RedAngle)>Mathf.Pi/6+.001f || Mathf.Abs(data.BlueAngle)>Mathf.Pi/6+.001f
-            || Math.Abs(data.RedSide)!=1 || Math.Abs(data.BlueSide)!=1) throw new Exception("Invalid match or HIVE state");
+            || (data.RedSide!=1 && data.RedSide!=-1) || (data.BlueSide!=1 && data.BlueSide!=-1)
+            || data.RedTips<0 || data.BlueTips<0 || data.Tokens.Any(n=>n<0)) throw new Exception("Invalid match or HIVE state");
         foreach (var r in data.Robots)
             if (r==null || !float.IsFinite(r.X+r.Z+r.Yaw+r.Vx+r.Vz+r.Cooldown+r.Speed+r.Acceleration+r.TurnSpeed)
                 || r.X<0 || r.X>Arena.Size || r.Z>0 || r.Z < -Arena.Size || r.Inventory==null || r.Inventory.Length>4
@@ -316,7 +341,7 @@ public partial class Simulation : Node3D
                     throw new Exception("Invalid piece container");
             }
         }
-        var profile=data.Profile ?? new RobotProfile(); profile.Validate();
+        var profile=data.Profile?.Copy() ?? new RobotProfile(); profile.Validate();
         Practice=data.Practice; TwoPlayers=data.TwoPlayers; Profile=profile; AimFlower=data.AimFlower; Reset(); Elapsed=data.Time;
         for (int i = 0; i < 4; i++)
         {
@@ -344,6 +369,7 @@ public partial class Simulation : Node3D
             if (!ball.Stored) { ball.Position = new(b.X,b.Y,b.Z); ball.LinearVelocity = new(b.Vx, b.Vy, b.Vz); ball.AngularVelocity = new(b.Wx, b.Wy, b.Wz); }
         }
         UpdateScore();
+        if (Finished) { SetFrozen(true); Hud.ShowResults(); }
     }
     public sealed class Snapshot
     {
@@ -360,6 +386,7 @@ public partial class Simulation : Node3D
     public sealed class BallData { public int ShotRobotIndex {get;set;}=-1; public bool ShotConfirmed {get;set;} public PieceKind Kind { get; set; } public float X { get; set; } public float Y { get; set; } public float Z { get; set; }
         public float Vx { get; set; } public float Vy { get; set; } public float Vz { get; set; } public float Wx { get; set; } public float Wy { get; set; } public float Wz { get; set; }
         public string Container { get; set; } public int Slot { get; set; } }
+    public async void AuditTest() => await SimulatorRegressionChecks.Run(this);
     public async void RenderedPreviewTest()
     {
         try

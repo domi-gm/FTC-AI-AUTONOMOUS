@@ -55,7 +55,10 @@ public partial class RobotTelemetryPanel : Control
             DrawArc(new(25+i*28,69),10,0,Mathf.Tau,32,new("515866"),1,true);
         }
         bool inField=robot.Position.X>=0 && robot.Position.X<=Arena.Size && robot.Position.Z<=0 && robot.Position.Z>=-Arena.Size;
-        Badge(Game.Paused ? "PAUSED" : inField ? "IN FIELD  •  TRACKING" : "OUT OF FIELD",91,new("173b2d"),green);
+        string state=Game.Finished ? "MATCH COMPLETE" : Game.Paused ? "PAUSED"
+            : !Game.DrivingAllowed ? "TRANSITION  •  WAITING"
+            : inField ? "IN FIELD  •  TRACKING" : "OUT OF FIELD";
+        Badge(state,91,new("173b2d"),green);
         Badge(Game.Aim.PollenClear ? "POLLEN  •  CLEAR PATH" : "POLLEN  •  BLOCKED",120,Game.Aim.PollenClear ? new("173b2d") : new("622936"),Game.Aim.PollenClear ? green : white);
         Badge(Game.Aim.NectarClear ? "NECTAR  •  CLEAR PATH" : "NECTAR  •  BLOCKED",149,Game.Aim.NectarClear ? new("173b2d") : new("622936"),Game.Aim.NectarClear ? green : white);
         Vector3 direction=Game.Target(robot)-robot.Turret.GlobalPosition; direction.Y=0;

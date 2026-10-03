@@ -9,6 +9,8 @@ public partial class SimulatorHud : CanvasLayer
     private VBoxContainer _content;
     private Label _red, _blue, _clock, _telemetry, _status;
     private HBoxContainer _score;
+    private RobotProfile _draft;
+    public bool MenuVisible => _menu.Visible;
     public override void _Ready()
     {
         _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -32,7 +34,9 @@ public partial class SimulatorHud : CanvasLayer
         var telemetryPanel=new RobotTelemetryPanel { Game=Game, OffsetLeft=24, OffsetTop=88,
             OffsetRight=328, OffsetBottom=496 };
         _root.AddChild(telemetryPanel);
-        _status = new Label { OffsetLeft = 24, OffsetTop = 16, OffsetRight = 380, OffsetBottom = 50 };
+        _status = new Label { OffsetLeft=24, OffsetTop=16, OffsetRight=380, OffsetBottom=80,
+            AutowrapMode=TextServer.AutowrapMode.WordSmart, MaxLinesVisible=2, ClipText=true,
+            MouseFilter=Control.MouseFilterEnum.Pass };
         _status.AddThemeColorOverride("font_color", new("a1afc6")); _root.AddChild(_status);
         var controls = new HBoxContainer { AnchorLeft = 1, AnchorRight = 1, AnchorTop = 1, AnchorBottom = 1, OffsetLeft = -455, OffsetRight = -24, OffsetTop = -62, OffsetBottom = -20 };
         _root.AddChild(controls);
@@ -86,18 +90,19 @@ public partial class SimulatorHud : CanvasLayer
     }
     public void ShowPause(bool paused)
     {
-        if (!paused) { _menu.Visible = false; return; }
+        if (!paused) { _menu.Visible=false; _draft=null; return; }
         Clear("PAUSED");
         Button(_content, "RESUME", Game.TogglePause);
         Button(_content, "ROBOT SETUP", RobotSetup);
         Button(_content, "SETTINGS", Settings);
         Button(_content, "SAVE PRACTICE POSITIONS [F5]", Game.Save);
-        Button(_content, "LOAD PRACTICE POSITIONS [F9]", () => { if (Game.Load()) _menu.Visible = false; });
+        // Load alege singur meniul potrivit: ascuns în joc, rezultate la final.
+        Button(_content, "LOAD PRACTICE POSITIONS [F9]", () => Game.Load());
         Button(_content, "SAVE PATH", Game.PathEditor.Save);
         Button(_content, "LOAD PATH", Game.PathEditor.Load);
         Button(_content, "MAIN MENU", () => { Game.Started = false; ShowMenu(); });
     }
-    private void Back() { if (Game.Started) ShowPause(true); else ShowMenu(); }
+    private void Back() { _draft=null; if (Game.Started) ShowPause(true); else ShowMenu(); }
     private void Help()
     {
         Clear("HOW TO PLAY");
@@ -127,15 +132,19 @@ public partial class SimulatorHud : CanvasLayer
     }
     private void RobotSetup()
     {
+        _draft ??=Game.Profile.Copy();
         Clear("ROBOT CREATOR", "Local profile • Apply restarts the scene");
-        Slider("Width (cm)", 25, 45.72, Game.Profile.WidthCm, v => Game.Profile.WidthCm = (float)v);
-        Slider("Length (cm)", 25, 45.72, Game.Profile.LengthCm, v => Game.Profile.LengthCm = (float)v);
-        Slider("Speed (m/s)", .3, 3, Game.Profile.Speed, v => Game.Profile.Speed = (float)v);
-        Slider("Acceleration (m/s²)", .5, 8, Game.Profile.Acceleration, v => Game.Profile.Acceleration = (float)v);
-        Slider("Turn speed (rad/s)", .5, 6, Game.Profile.TurnSpeed, v => Game.Profile.TurnSpeed = (float)v);
-        Button(_content, $"TURRETS: {Game.Profile.Turrets}  /  INTAKES: {Game.Profile.Intakes}", () => { Game.Profile.Turrets = Game.Profile.Turrets % 3 + 1; RobotSetup(); });
-        Button(_content, "TOGGLE SECOND INTAKE", () => { Game.Profile.Intakes = 3 - Game.Profile.Intakes; RobotSetup(); });
-        Button(_content, "SAVE + APPLY", () => { Game.Profile.Save(); Game.Reset(); _menu.Visible = false; });
+        Slider("Width (cm)", 25, 45.72, _draft.WidthCm, v => _draft.WidthCm = (float)v);
+        Slider("Length (cm)", 25, 45.72, _draft.LengthCm, v => _draft.LengthCm = (float)v);
+        Slider("Speed (m/s)", .3, 3, _draft.Speed, v => _draft.Speed = (float)v);
+        Slider("Acceleration (m/s²)", .5, 8, _draft.Acceleration, v => _draft.Acceleration = (float)v);
+        Slider("Turn speed (rad/s)", .5, 6, _draft.TurnSpeed, v => _draft.TurnSpeed = (float)v);
+        Button(_content, $"TURRETS: {_draft.Turrets}  /  INTAKES: {_draft.Intakes}", () => { _draft.Turrets = _draft.Turrets % 3 + 1; RobotSetup(); });
+        Button(_content, "TOGGLE SECOND INTAKE", () => { _draft.Intakes = 3 - _draft.Intakes; RobotSetup(); });
+        Button(_content, "SAVE + APPLY", () => {
+            try { _draft.Save(); Game.Profile=_draft; Game.Reset(); }
+            catch (Exception ex) { Game.Status="Cannot apply robot: "+ex.Message; }
+        });
         Button(_content, "BACK", Back);
     }
     public override void _Process(double delta)
@@ -148,6 +157,6 @@ public partial class SimulatorHud : CanvasLayer
         _clock.AddThemeFontSizeOverride("font_size", 22);
         var p = Game.Player.Position;
         _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot";
-        _status.Text = Game.Status;
+        _status.Text = Game.Status; _status.TooltipText=Game.Status;
     }
 }

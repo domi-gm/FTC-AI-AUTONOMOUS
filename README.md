@@ -16,4 +16,5 @@ right-drag orbits, C changes the camera, Escape pauses, and R resets.
 
 Validation: `dotnet build` in godot/; run Godot with
 `--headless --path godot -- --smoke-test` for integration checks.
+Use `--audit-test` for menu, creator, snapshot, path and match-state regressions.
 Backups, personal explanations, research downloads and build caches are excluded.

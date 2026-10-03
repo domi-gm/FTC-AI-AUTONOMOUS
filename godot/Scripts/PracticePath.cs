@@ -10,6 +10,33 @@ public partial class PracticePath : Node3D
     public readonly List<Vector3> Points = new();
     public bool Editing, Following;
     public int Current;
+    private Vector3 _previousPosition;
+    private float _blockedTime;
+    public override void _PhysicsProcess(double delta)
+    {
+        if (!Following || !Game.Running) { _blockedTime=0; _previousPosition=Game.Player.Position; return; }
+        if (Current<Points.Count && Points[Current].DistanceTo(Game.Player.Position)>.05f
+            && _previousPosition.DistanceTo(Game.Player.Position)<.0005f) _blockedTime+=(float)delta;
+        else _blockedTime=0;
+        _previousPosition=Game.Player.Position;
+        if (_blockedTime>2) { Following=false; Game.Player.Command=Vector3.Zero; Game.Status="Path stopped: blocked for 2 seconds; move the waypoint"; }
+    }
+    public bool IsValidPoint(Vector3 point)
+    {
+        if (!float.IsFinite(point.X+point.Y+point.Z) || point.X<0 || point.X>Arena.Size || point.Z>0 || point.Z < -Arena.Size) return false;
+        var robot=Game.Player;
+        using var shape=new BoxShape3D { Size=new(robot.Width+.006f,.28f,robot.Length+.006f) };
+        using var query=new PhysicsShapeQueryParameters3D { Shape=shape, CollisionMask=1,
+            Transform=new Transform3D(robot.GlobalBasis,new Vector3(point.X,.15f,point.Z)) };
+        return GetWorld3D().DirectSpaceState.IntersectShape(query,1).Count==0;
+    }
+    public bool ReplacePoints(float[][] data)
+    {
+        if (data==null || data.Length>1000 || !data.All(p=>p?.Length==2 && IsValidPoint(Field.ToGodot(p[0],p[1]))))
+        { Game.Status="Invalid path: a waypoint overlaps an obstacle or field wall"; return false; }
+        Points.Clear(); foreach (var point in data) Points.Add(Field.ToGodot(point[0],point[1]));
+        Following=false; Current=0; _blockedTime=0; Rebuild(); return true;
+    }
     public override void _UnhandledInput(InputEvent e)
     {
         if (!Game.Practice || !Game.Running) return;
@@ -25,16 +52,20 @@ public partial class PracticePath : Node3D
             if (Mathf.Abs(direction.Y) < .001f) return;
             float distance = -from.Y / direction.Y; if (distance < 0) return;
             var point = from + direction * distance;
-            if (point.X < .23f || point.X > Arena.Size - .23f || point.Z > -.23f || point.Z < -Arena.Size + .23f) return;
+            if (Points.Count>=1000 || !IsValidPoint(point)) { Game.Status="Waypoint rejected: robot overlaps an obstacle or wall"; return; }
             point.Y = 0; Points.Add(point); Rebuild();
         }
     }
     public Vector3 Command()
     {
         if (!Following || Current >= Points.Count) { Following = false; return Vector3.Zero; }
-        var difference = Points[Current] - Game.Player.Position; difference.Y = 0;
-        if (difference.Length() < .035f) { Current++; return Command(); }
-        return difference.Normalized() * Mathf.Min(1, difference.Length() * 4);
+        while (Current<Points.Count)
+        {
+            var difference=Points[Current]-Game.Player.Position; difference.Y=0;
+            if (difference.Length()>=.035f) return difference.Normalized()*Mathf.Min(1,difference.Length()*4);
+            Current++;
+        }
+        Following=false; return Vector3.Zero;
     }
     private void Rebuild()
     {
@@ -42,14 +73,20 @@ public partial class PracticePath : Node3D
         for (int i = 0; i < Points.Count; i++)
         {
             VisualFactory.Cylinder(this, "Waypoint", Points[i] + Vector3.Up * .01f, .035f, .01f, VisualFactory.Gold);
-            if (i > 0) VisualFactory.Beam(this, "PathSegment", Points[i - 1] + Vector3.Up * .02f, Points[i] + Vector3.Up * .02f, .012f, VisualFactory.Gold);
+            if (i>0 && Points[i-1].DistanceSquaredTo(Points[i])>.0000001f)
+                VisualFactory.Beam(this,"PathSegment",Points[i-1]+Vector3.Up*.02f,Points[i]+Vector3.Up*.02f,.012f,VisualFactory.Gold);
         }
     }
     public void Save()
     {
-        using var file = FileAccess.Open("user://path.json", FileAccess.ModeFlags.Write);
-        file.StoreString(JsonSerializer.Serialize(Points.Select(p => new[] { p.X * 100, -p.Z * 100 }).ToArray()));
-        Game.Status = "Path saved in centimetres";
+        try
+        {
+            using var file=FileAccess.Open("user://path.json",FileAccess.ModeFlags.Write);
+            if (file==null) throw new System.IO.IOException("Cannot open path file: "+FileAccess.GetOpenError());
+            file.StoreString(JsonSerializer.Serialize(Points.Select(p=>new[] {p.X*100,-p.Z*100}).ToArray()));
+            Game.Status="Path saved in centimetres";
+        }
+        catch (System.Exception ex) { Game.Status="Cannot save path: "+ex.Message; }
     }
     public void Load()
     {
@@ -57,11 +94,7 @@ public partial class PracticePath : Node3D
         {
             if (!FileAccess.FileExists("user://path.json")) return;
             var data = JsonSerializer.Deserialize<float[][]>(FileAccess.GetFileAsString("user://path.json"));
-            if (data == null || data.Length > 1000) return;
-            var valid = data.All(p => p?.Length == 2 && float.IsFinite(p[0] + p[1]) && p[0] >= 0 && p[0] <= Arena.Size * 100 && p[1] >= 0 && p[1] <= Arena.Size * 100);
-            if (!valid) { Game.Status = "Invalid path"; return; }
-            Points.Clear(); foreach (var p in data) Points.Add(Field.ToGodot(p[0], p[1]));
-            Following = false; Rebuild(); Game.Status = "Path loaded";
+            if (ReplacePoints(data)) Game.Status="Path loaded";
         }
         catch (System.Exception ex) { Game.Status = "Path: " + ex.Message; }
     }

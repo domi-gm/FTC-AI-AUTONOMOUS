@@ -37,3 +37,22 @@ Hold middle mouse and drag to orbit. Shift + middle-drag pans the view;
 right-drag still orbits, wheel still zooms. Settings > RESET CAMERA VIEW resets
 framing. Camera drag exits fixed top/robot view. Shift during pan does not
 trigger intake. Shot counters survive save/load; failed loads keep pause visible.
+
+## State and path validation
+
+Robot Creator edits a temporary profile; BACK discards changes, SAVE + APPLY
+saves and restarts. Reset/load closes stale pause menus. Finished matches stay
+frozen at 158 seconds, including after loading or pressing Escape. The transition
+phase stops robot commands while allowing already airborne pieces to fall.
+
+Practice paths validate the robot footprint against static obstacles at every
+waypoint and accept at most 1000 points. Invalid loads preserve the old path.
+Duplicate reached points are skipped iteratively; zero-length segments are
+not drawn. Following stops with a status message after two seconds of blocked
+movement. Valid waypoints do not guarantee a clear segment between them; this
+follower does not plan around obstacles. Camera drag from robot view initializes
+orbit from its actual framing. Long status messages wrap; hover for full text.
+
+Additional regressions: Godot --headless --path . -- --audit-test. Covers menu
+state, draft edits, snapshot ownership/validation, camera handoff, paths, match
+transition and finished matches without overwriting personal save files.

@@ -12,6 +12,7 @@ public sealed class RobotProfile
     public float TurnSpeed { get; set; } = 2.8f;
     public int Turrets { get; set; } = 1;
     public int Intakes { get; set; } = 1;
+    public RobotProfile Copy() => (RobotProfile)MemberwiseClone();
     public void Validate()
     {
         if (!float.IsFinite(WidthCm + LengthCm + Speed + Acceleration + TurnSpeed)) throw new ArgumentException("Non-finite robot parameters");
@@ -27,6 +28,8 @@ public sealed class RobotProfile
     }
     public void Save()
     {
-        Validate(); using var file = FileAccess.Open("user://robot.json", FileAccess.ModeFlags.Write); file.StoreString(JsonSerializer.Serialize(this));
+        Validate(); using var file = FileAccess.Open("user://robot.json", FileAccess.ModeFlags.Write);
+        if (file==null) throw new System.IO.IOException("Cannot save robot profile: "+FileAccess.GetOpenError());
+        file.StoreString(JsonSerializer.Serialize(this));
     }
 }

@@ -77,7 +77,7 @@ public partial class RobotAgent : CharacterBody3D
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
-        if (!Game.Running) { Velocity = Vector3.Zero; return; }
+        if (!Game.DrivingAllowed) { Velocity = Vector3.Zero; return; }
         Cooldown = Mathf.Max(0, Cooldown - dt);
         if (Bot) Think(dt);
         Vector3 desired = Command.LimitLength() * Speed;
@@ -130,7 +130,7 @@ public partial class RobotAgent : CharacterBody3D
     }
     public void Fire()
     {
-        if (!Game.Running || Cooldown > 0 || Inventory.Count == 0) return;
+        if (!Game.DrivingAllowed || Cooldown > 0 || Inventory.Count == 0) return;
         var origin = LaunchOrigin;
         var target = Game.Target(this);
         float radius = Inventory[0] == PieceKind.Pollen ? .03556f : .04572f;
@@ -148,7 +148,6 @@ public partial class RobotAgent : CharacterBody3D
     }
     private void Think(float dt)
     {
-        var target = Game.Target(this);
         Intake = true; FireCommand = false;
         Vector3 goal = GlobalPosition;
         if (Inventory.Count > 0)
