@@ -134,12 +134,17 @@ public partial class Simulation : Node3D
             if (ball.Stored) continue;
             if (ball.Position.Y < -1 || Mathf.Abs(ball.Position.X) > 20 || Mathf.Abs(ball.Position.Z) > 20)
             { ball.Position = Arena.World(.15f, .15f, ball.Radius + .01f); ball.LinearVelocity = Vector3.Zero; }
-            if (RedHive.TryCatch(ball) || BlueHive.TryCatch(ball)) continue;
-            foreach (var flower in Flowers) if (flower.TryCatch(ball)) break;
+            if (RedHive.TryCatch(ball) || BlueHive.TryCatch(ball)) { ConfirmShot(ball); continue; }
+            foreach (var flower in Flowers) if (flower.TryCatch(ball)) { ConfirmShot(ball); break; }
         }
         HumanTokens[0] += RedHive.Tips - _redLastTips; HumanTokens[1] += BlueHive.Tips - _blueLastTips;
         _redLastTips = RedHive.Tips; _blueLastTips = BlueHive.Tips;
         UpdateScore();
+    }
+    private void ConfirmShot(GamePiece ball)
+    {
+        if (ball.ShotConfirmed || ball.ShotRobotIndex<0 || ball.LinearVelocity.Length()>.35f) return;
+        ball.ShotConfirmed=true; Robots[ball.ShotRobotIndex].ShotsMade++;
     }
     private void ReadPlayer(RobotAgent robot, bool second)
     {
@@ -155,7 +160,8 @@ public partial class Simulation : Node3D
             else robot.Command = PathEditor.Command();
         }
         robot.TurnCommand = second ? (Held(Key.Comma) ? 1 : 0) - (Held(Key.Period) ? 1 : 0) : (Held(Key.Q) ? 1 : 0) - (Held(Key.E) ? 1 : 0);
-        robot.Intake = Held(second ? Key.Enter : Key.Shift) || (!second && Held(Key.J));
+        robot.Intake = (Held(second ? Key.Enter : Key.Shift) && (second || !Input.IsMouseButtonPressed(MouseButton.Middle)))
+            || (!second && Held(Key.J));
         robot.FireCommand = Held(second ? Key.Slash : Key.Space);
         int pad = second ? 1 : 0;
         if (Input.GetConnectedJoypads().Contains(pad))
@@ -242,16 +248,17 @@ public partial class Simulation : Node3D
         using var file = Godot.FileAccess.Open("user://practice.json", Godot.FileAccess.ModeFlags.Write); file.StoreString(JsonSerializer.Serialize(snapshot));
         Status = "Scene saved: pieces, inventories, HIVE, flowers, timer";
     }
-    public void Load()
+    public bool Load()
     {
-        if (!Godot.FileAccess.FileExists("user://practice.json")) { Status = "No saved scene"; return; }
+        if (!Godot.FileAccess.FileExists("user://practice.json")) { Status = "No saved scene"; return false; }
         try
         {
             var data = JsonSerializer.Deserialize<Snapshot>(Godot.FileAccess.GetFileAsString("user://practice.json"));
             Restore(data);
             Status = "Scene restored";
+            return true;
         }
-        catch (Exception ex) { Status = "Cannot load: " + ex.Message; }
+        catch (Exception ex) { Status = "Cannot load: " + ex.Message; return false; }
     }
     public Snapshot Capture()
     {
@@ -274,12 +281,12 @@ public partial class Simulation : Node3D
             RedAngularVelocity = RedHive.AngularVelocity, BlueAngularVelocity = BlueHive.AngularVelocity,
             RedTips = RedHive.Tips, BlueTips = BlueHive.Tips, Tokens = (int[])HumanTokens.Clone(),
             Robots = Robots.Select(r => new RobotData { X = r.Position.X, Z = r.Position.Z, Yaw = r.Rotation.Y, Inventory = r.Inventory.ToArray(),
-                Vx = r.Velocity.X, Vz = r.Velocity.Z, Cooldown = r.Cooldown, Speed = r.Speed, Acceleration = r.Acceleration, TurnSpeed = r.TurnSpeed }).ToArray(),
+                ShotsFired=r.ShotsFired, ShotsMade=r.ShotsMade, Vx = r.Velocity.X, Vz = r.Velocity.Z, Cooldown = r.Cooldown, Speed = r.Speed, Acceleration = r.Acceleration, TurnSpeed = r.TurnSpeed }).ToArray(),
             Balls = Balls.Select(b => {
                 string container = Container(b, out int slot);
                 var linear = _pausedVelocities.TryGetValue(b, out var motion) ? motion.Linear : b.LinearVelocity;
                 var angular = _pausedVelocities.TryGetValue(b, out motion) ? motion.Angular : b.AngularVelocity;
-                return new BallData { Kind = b.Kind, X = b.Position.X, Y = b.Position.Y, Z = b.Position.Z,
+                return new BallData { ShotRobotIndex=b.ShotRobotIndex, ShotConfirmed=b.ShotConfirmed, Kind = b.Kind, X = b.Position.X, Y = b.Position.Y, Z = b.Position.Z,
                     Vx = linear.X, Vy = linear.Y, Vz = linear.Z, Wx = angular.X, Wy = angular.Y, Wz = angular.Z, Container = container, Slot = slot };
             }).ToArray()
         };
@@ -293,12 +300,13 @@ public partial class Simulation : Node3D
         foreach (var r in data.Robots)
             if (r==null || !float.IsFinite(r.X+r.Z+r.Yaw+r.Vx+r.Vz+r.Cooldown+r.Speed+r.Acceleration+r.TurnSpeed)
                 || r.X<0 || r.X>Arena.Size || r.Z>0 || r.Z < -Arena.Size || r.Inventory==null || r.Inventory.Length>4
-                || r.Inventory.Any(k => !Enum.IsDefined(k)) || r.Speed<=0 || r.Acceleration<=0 || r.TurnSpeed<=0)
+                || r.Inventory.Any(k => !Enum.IsDefined(k)) || r.Speed<=0 || r.Acceleration<=0 || r.TurnSpeed<=0
+                || r.ShotsFired<0 || r.ShotsMade<0 || r.ShotsMade>r.ShotsFired)
                 throw new Exception("Invalid robot state");
         foreach (var b in data.Balls)
         {
             if (b==null || !float.IsFinite(b.X+b.Y+b.Z+b.Vx+b.Vy+b.Vz+b.Wx+b.Wy+b.Wz) || Math.Abs(b.X)>30
-                || Math.Abs(b.Y)>30 || Math.Abs(b.Z)>30 || !Enum.IsDefined(b.Kind)) throw new Exception("Invalid ball state");
+                || Math.Abs(b.Y)>30 || Math.Abs(b.Z)>30 || b.ShotRobotIndex < -1 || b.ShotRobotIndex>3 || !Enum.IsDefined(b.Kind)) throw new Exception("Invalid ball state");
             if (b.Container!="free")
             {
                 string[] parts=b.Container?.Split(':');
@@ -314,7 +322,7 @@ public partial class Simulation : Node3D
         {
             var d = data.Robots[i]; var r = Robots[i]; r.Position = new(d.X, 0, d.Z); r.Rotation = new(0, d.Yaw, 0);
             r.Inventory.Clear(); r.Inventory.AddRange(d.Inventory); r.Velocity = new(d.Vx, 0, d.Vz); r.Cooldown = d.Cooldown;
-            r.Speed = d.Speed; r.Acceleration = d.Acceleration; r.TurnSpeed = d.TurnSpeed;
+            r.ShotsFired=d.ShotsFired; r.ShotsMade=d.ShotsMade; r.Speed = d.Speed; r.Acceleration = d.Acceleration; r.TurnSpeed = d.TurnSpeed;
         }
         RedHive.RestorePose(data.RedAngle, data.RedSide, data.RedTips, data.RedAngularVelocity); BlueHive.RestorePose(data.BlueAngle, data.BlueSide, data.BlueTips, data.BlueAngularVelocity);
         _redLastTips = data.RedTips; _blueLastTips = data.BlueTips; Array.Copy(data.Tokens, HumanTokens, 2);
@@ -324,6 +332,7 @@ public partial class Simulation : Node3D
         foreach (var b in data.Balls.OrderBy(b => b.Slot))
         {
             var ball = SpawnBall(b.Kind, new(b.X, b.Y, b.Z));
+            ball.ShotRobotIndex=b.ShotRobotIndex; ball.ShotConfirmed=b.ShotConfirmed;
             if (b.Container != "free")
             {
                 string[] parts = b.Container.Split(':'); int index = int.Parse(parts[1]);
@@ -346,9 +355,9 @@ public partial class Simulation : Node3D
         public int RedTips { get; set; } public int BlueTips { get; set; } public int[] Tokens { get; set; }
         public RobotData[] Robots { get; set; } public BallData[] Balls { get; set; }
     }
-    public sealed class RobotData { public float X { get; set; } public float Z { get; set; } public float Yaw { get; set; } public PieceKind[] Inventory { get; set; }
+    public sealed class RobotData { public int ShotsFired {get;set;} public int ShotsMade {get;set;} public float X { get; set; } public float Z { get; set; } public float Yaw { get; set; } public PieceKind[] Inventory { get; set; }
         public float Vx { get; set; } public float Vz { get; set; } public float Cooldown { get; set; } public float Speed { get; set; } public float Acceleration { get; set; } public float TurnSpeed { get; set; } }
-    public sealed class BallData { public PieceKind Kind { get; set; } public float X { get; set; } public float Y { get; set; } public float Z { get; set; }
+    public sealed class BallData { public int ShotRobotIndex {get;set;}=-1; public bool ShotConfirmed {get;set;} public PieceKind Kind { get; set; } public float X { get; set; } public float Y { get; set; } public float Z { get; set; }
         public float Vx { get; set; } public float Vy { get; set; } public float Vz { get; set; } public float Wx { get; set; } public float Wy { get; set; } public float Wz { get; set; }
         public string Container { get; set; } public int Slot { get; set; } }
     public async void RenderedPreviewTest()
@@ -414,21 +423,42 @@ public partial class Simulation : Node3D
             Camera.LookAt(center, Vector3.Forward);
             Check(Camera.ToGroundMovement(new(0, -1)).DistanceTo(Vector3.Forward) < .00001f, "Top camera W has a stable direction");
             Camera.GlobalTransform = oldCameraTransform; Camera.Projection = oldProjection;
+            Camera.ResetView(); Camera._Process(0);
+            Vector3 cameraBefore=Camera.Position;
+            Camera._UnhandledInput(new InputEventMouseMotion { ButtonMask=MouseButtonMask.Middle, Relative=new(70,20) });
+            Camera._Process(0);
+            Check(Camera.Position.DistanceTo(cameraBefore)>.1f,"Middle mouse drag changes camera angle");
+            Vector3 viewBefore=-Camera.GlobalBasis.Z;
+            cameraBefore=Camera.Position;
+            Camera._UnhandledInput(new InputEventMouseMotion { ButtonMask=MouseButtonMask.Middle, ShiftPressed=true, Relative=new(40,-20) });
+            Camera._Process(0);
+            Check(Camera.Position.DistanceTo(cameraBefore)>.1f && (-Camera.GlobalBasis.Z).DistanceTo(viewBefore)<.001f,
+                "Shift-middle drag pans without changing camera angle");
+            Camera.Mode=1;
+            Camera._UnhandledInput(new InputEventMouseMotion { ButtonMask=MouseButtonMask.Middle, Relative=new(10,0) });
+            Camera._Process(0); Check(Camera.Mode==0,"Dragging exits the fixed top view");
+            Camera.ResetView(); Camera._Process(0);
             Check(Count() == 56 && Flowers.Sum(f => f.Balls.Count) == 16 && HumanStock.Sum(h => h.Count) == 10, "Initial distribution: 56 pieces, 16 in flowers, 10 in human stock");
             int before = Balls.Count; Player.Fire();
             Check(Balls.Count == before + 1 && Player.Inventory.Count == 3 && Count() == 56, "Launch conserves inventory");
             await Frames(180);
             Check(RedHive.Contents.Sum(c => c.Count) == 4, "A real launch enters the red HIVE without teleportation");
+            Check(Player.ShotsFired==1 && Player.ShotsMade==1,"Telemetry counts one launched and landed shot");
+            Check(Aim.PollenClear && Aim.NectarClear && RedHive.TipLoadFraction>=0 && RedHive.TipLoadFraction<=1,
+                "Telemetry predicts both piece sizes and bounds the HIVE load bar");
             var blocker = new StaticBody3D { Position = new(Arena.Center, 2.5f, -.85f) };
             AddChild(blocker); blocker.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new(Arena.Size + 2, 6, .1f) } });
             await Frames(2); Player.Cooldown = 0;
             int beforeBlockedShot = Balls.Count, beforeBlockedInventory = Player.Inventory.Count;
             Player.Fire();
             Check(Balls.Count == beforeBlockedShot && Player.Inventory.Count == beforeBlockedInventory && Player.ShotStatus.Contains("BLOCKED"), "Blocked launch preserves inventory");
+            Check(Player.ShotsFired==1,"Blocked attempts are not counted as launched shots");
             RemoveChild(blocker); blocker.QueueFree(); await Frames(2);
             var snapshot = JsonSerializer.Deserialize<Snapshot>(JsonSerializer.Serialize(Capture()));
             Restore(snapshot); foreach (var r in Robots) r.Bot = false;
             Check(Count() == 56 && Player.Inventory.Count == 3 && RedHive.Contents.Sum(c => c.Count) == 4, "Save/load preserves free, held and stored pieces");
+            Check(Player.ShotsFired==1 && Player.ShotsMade==1 && Balls.Count(b=>b.ShotConfirmed)==1,
+                "Save/load preserves shot counters without recounting a landed piece");
             var invalid = JsonSerializer.Deserialize<Snapshot>(JsonSerializer.Serialize(Capture()));
             invalid.Balls[0].Container="flower:9";
             var playerBeforeInvalid=Player; bool rejected=false;

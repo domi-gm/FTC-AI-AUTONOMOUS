@@ -6,6 +6,20 @@ public partial class OrbitCamera : Camera3D
     public int Mode;
     public float Distance = 6.4f;
     private float _yaw = .25f, _pitch = .70f;
+    private Vector3 _pan;
+    public void ResetView() { Mode=0; Distance=6.4f; _yaw=.25f; _pitch=.70f; _pan=Vector3.Zero; }
+    public void Drag(Vector2 relative, bool pan)
+    {
+        Mode=0;
+        if (pan)
+        {
+            Vector3 right=GlobalBasis.X;
+            Vector3 up=GlobalBasis.Y;
+            _pan+=(-right*relative.X+up*relative.Y)*Distance*.0015f;
+            _pan=_pan.LimitLength(Arena.Size*2);
+        }
+        else { _yaw-=relative.X*.006f; _pitch=Mathf.Clamp(_pitch+relative.Y*.004f,.15f,1.45f); }
+    }
 
     /// <summary>Transformă direcția de pe ecran în deplasare pe podea (X/Z).</summary>
     public Vector3 ToGroundMovement(Vector2 screenInput)
@@ -25,12 +39,12 @@ public partial class OrbitCamera : Camera3D
             if (b.ButtonIndex == MouseButton.WheelUp) Distance = Mathf.Max(2.5f, Distance - .3f);
             if (b.ButtonIndex == MouseButton.WheelDown) Distance = Mathf.Min(12, Distance + .3f);
         }
-        if (e is InputEventMouseMotion m && Input.IsMouseButtonPressed(MouseButton.Right))
-        { _yaw -= m.Relative.X * .006f; _pitch = Mathf.Clamp(_pitch + m.Relative.Y * .004f, .15f, 1.45f); }
+        if (e is InputEventMouseMotion m && (m.ButtonMask & (MouseButtonMask.Middle|MouseButtonMask.Right)) != 0)
+            Drag(m.Relative, (m.ButtonMask & MouseButtonMask.Middle)!=0 && m.ShiftPressed);
     }
     public override void _Process(double delta)
     {
-        var target = Arena.World(Arena.Center, Arena.Center, .30f);
+        var target = Arena.World(Arena.Center, Arena.Center, .30f) + _pan;
         Projection = Mode == 1 ? ProjectionType.Orthogonal : ProjectionType.Perspective;
         if (Mode == 1)
         {

@@ -9,7 +9,6 @@ public partial class SimulatorHud : CanvasLayer
     private VBoxContainer _content;
     private Label _red, _blue, _clock, _telemetry, _status;
     private HBoxContainer _score;
-    private Label _aim;
     public override void _Ready()
     {
         _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -30,9 +29,9 @@ public partial class SimulatorHud : CanvasLayer
         _score.AddChild(_red); _score.AddChild(_clock); _score.AddChild(_blue);
         _telemetry = new Label { OffsetLeft = 24, OffsetTop = -128, OffsetRight = 560, OffsetBottom = -24, AnchorTop = 1, AnchorBottom = 1 };
         _root.AddChild(_telemetry);
-        var aimPanel = new PanelContainer { AnchorLeft = 1, AnchorRight = 1, OffsetLeft = -260, OffsetRight = -24, OffsetTop = 100, OffsetBottom = 200 };
-        aimPanel.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = new Color(.04f,.06f,.09f,.9f), CornerRadiusTopLeft = 10, CornerRadiusTopRight = 10, CornerRadiusBottomLeft = 10, CornerRadiusBottomRight = 10, ContentMarginLeft = 16, ContentMarginRight = 16, ContentMarginTop = 12, ContentMarginBottom = 12 });
-        _root.AddChild(aimPanel); _aim = new Label(); aimPanel.AddChild(_aim);
+        var telemetryPanel=new RobotTelemetryPanel { Game=Game, OffsetLeft=24, OffsetTop=88,
+            OffsetRight=328, OffsetBottom=496 };
+        _root.AddChild(telemetryPanel);
         _status = new Label { OffsetLeft = 24, OffsetTop = 16, OffsetRight = 380, OffsetBottom = 50 };
         _status.AddThemeColorOverride("font_color", new("a1afc6")); _root.AddChild(_status);
         var controls = new HBoxContainer { AnchorLeft = 1, AnchorRight = 1, AnchorTop = 1, AnchorBottom = 1, OffsetLeft = -455, OffsetRight = -24, OffsetTop = -62, OffsetBottom = -20 };
@@ -93,7 +92,7 @@ public partial class SimulatorHud : CanvasLayer
         Button(_content, "ROBOT SETUP", RobotSetup);
         Button(_content, "SETTINGS", Settings);
         Button(_content, "SAVE PRACTICE POSITIONS [F5]", Game.Save);
-        Button(_content, "LOAD PRACTICE POSITIONS [F9]", () => { Game.Load(); _menu.Visible = false; });
+        Button(_content, "LOAD PRACTICE POSITIONS [F9]", () => { if (Game.Load()) _menu.Visible = false; });
         Button(_content, "SAVE PATH", Game.PathEditor.Save);
         Button(_content, "LOAD PATH", Game.PathEditor.Load);
         Button(_content, "MAIN MENU", () => { Game.Started = false; ShowMenu(); });
@@ -102,7 +101,7 @@ public partial class SimulatorHud : CanvasLayer
     private void Help()
     {
         Clear("HOW TO PLAY");
-        _content.AddChild(new Label { Text = "WASD  Move relative to the camera\nW: screen forward / D: screen right\nQ / E  Rotate robot\nSHIFT / J  Hold to collect (max 4 pieces)\nSPACE  Launch toward selected target\nT  Target HIVE / FLOWER\nH  Human player releases NECTAR\nK  Extract bottom ball near FLOWER\nF2  Path editor / P follows / Backspace removes\nC  Orbit / top / robot camera\nRight mouse drag  Orbit • Wheel  Zoom\nB / N  Add POLLEN / NECTAR in practice\nR  Reset • ESC  Pause\nF5 / F9  Save / load practice positions\n\nPlayer 2: arrows, comma/period, Enter, slash\nGamepad: camera-relative left stick, right stick X, LB / RB", AutowrapMode = TextServer.AutowrapMode.WordSmart });
+        _content.AddChild(new Label { Text = "WASD  Move relative to the camera\nW: screen forward / D: screen right\nQ / E  Rotate robot\nSHIFT / J  Hold to collect (max 4 pieces)\nSPACE  Launch toward selected target\nT  Target HIVE / FLOWER\nH  Human player releases NECTAR\nK  Extract bottom ball near FLOWER\nF2  Path editor / P follows / Backspace removes\nC  Orbit / top / robot camera\nMiddle/right mouse drag  Orbit • Wheel  Zoom\nShift + middle drag  Pan view\nB / N  Add POLLEN / NECTAR in practice\nR  Reset • ESC  Pause\nF5 / F9  Save / load practice positions\n\nPlayer 2: arrows, comma/period, Enter, slash\nGamepad: camera-relative left stick, right stick X, LB / RB", AutowrapMode = TextServer.AutowrapMode.WordSmart });
         Button(_content, "BACK", Back);
     }
     private void Accuracy()
@@ -114,9 +113,10 @@ public partial class SimulatorHud : CanvasLayer
     private void Settings()
     {
         Clear("SETTINGS");
-        Slider("Camera distance", 3, 10, Game.Camera.Distance, value => Game.Camera.Distance = (float)value);
+        Slider("Camera distance", 2.5, 12, Game.Camera.Distance, value => Game.Camera.Distance = (float)value);
         Slider("Field of view", 30, 75, Game.Camera.Fov, value => Game.Camera.Fov = (float)value);
         Button(_content, "CAMERA: " + Game.Camera.Mode, () => { Game.Camera.Mode = (Game.Camera.Mode + 1) % 3; Settings(); });
+        Button(_content, "RESET CAMERA VIEW", Game.Camera.ResetView);
         Button(_content, "BACK", Back);
     }
     private void Slider(string title, double min, double max, double value, Action<double> changed)
@@ -147,8 +147,6 @@ public partial class SimulatorHud : CanvasLayer
         _clock.Text = $"{(int)time / 60}:{(int)time % 60:00}  {phase}";
         _clock.AddThemeFontSizeOverride("font_size", 22);
         var p = Game.Player.Position;
-        _aim.Text = $"AIM  /  {(Game.AimFlower ? "FLOWER" : "HIVE")}\n{Game.Aim.Status}\nLaunch speed: {Game.Aim.Speed:0.0} m/s";
-        _aim.AddThemeColorOverride("font_color", Game.Aim.Status == "ON TARGET" ? new Color("63e6b0") : new Color("ff667b"));
         _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot";
         _status.Text = Game.Status;
     }

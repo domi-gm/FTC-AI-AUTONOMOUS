@@ -5,6 +5,8 @@ public partial class GamePiece : RigidBody3D
 {
     public PieceKind Kind;
     public bool Stored;
+    public int ShotRobotIndex=-1;
+    public bool ShotConfirmed;
     public float Radius => Kind == PieceKind.Pollen ? .03556f : .04572f;
     private static Shader _shader;
     public override void _Ready()

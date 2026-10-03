@@ -5,6 +5,9 @@ public partial class AimPreview : Node3D
     public Simulation Game;
     public string Status = "NO PIECE";
     public float Speed;
+    public bool PollenClear, NectarClear;
+    public float PollenSpeed, NectarSpeed;
+    public float PollenFlightTime, NectarFlightTime;
     public float FlightTime { get; private set; }
     public Vector3 DisplayOrigin { get; private set; }
     public Vector3 DisplayEnd { get; private set; }
@@ -35,9 +38,14 @@ public partial class AimPreview : Node3D
         _timer -= (float)delta;
         if (!changed && _timer > 0) return;
         _timer=.05f;
-        if (kind == null) { Status="NO PIECE"; Speed=0; FlightTime=0; _clear=false; return; }
-        float radius = kind == PieceKind.Pollen ? .03556f : .04572f;
-        _clear=ShotPlanner.TrySolve(robot,robot.LaunchOrigin,Game.Target(robot),radius,out var plan);
+        var origin=robot.LaunchOrigin; var target=Game.Target(robot);
+        PollenClear=ShotPlanner.TrySolve(robot,origin,target,.03556f,out var pollen);
+        NectarClear=ShotPlanner.TrySolve(robot,origin,target,.04572f,out var nectar);
+        PollenSpeed=pollen.Velocity.Length(); NectarSpeed=nectar.Velocity.Length();
+        PollenFlightTime=pollen.FlightTime; NectarFlightTime=nectar.FlightTime;
+        if (kind == null) { Status="NO PIECE"; Speed=0; FlightTime=0; _clear=false; PlanUpdates++; return; }
+        var plan=kind==PieceKind.Pollen ? pollen : nectar;
+        _clear=kind==PieceKind.Pollen ? PollenClear : NectarClear;
         FlightTime=plan.FlightTime; Speed=plan.Velocity.Length(); PlanUpdates++;
         Status=_clear ? "ON TARGET" : "BLOCKED";
     }

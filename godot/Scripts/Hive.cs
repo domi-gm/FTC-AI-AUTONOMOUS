@@ -20,6 +20,15 @@ public partial class Hive : Node3D
     public readonly List<GamePiece>[] Contents = { new(), new() };
     public Vector3 Mouth(int side) => ToGlobal(new Vector3(0, .105f, side * .48f));
     public int UpSide => _upSide;
+    public float TipLoadFraction
+    {
+        get
+        {
+            float hold = BodyMass*9.81f*CenterOfMassHeight*Mathf.Abs(Mathf.Sin(Angle))+FrictionTorque;
+            float downhillTorque=LoadTorque*_upSide;
+            return Mathf.Clamp(downhillTorque/Mathf.Max(hold,.001f),0,1);
+        }
+    }
     public override void _Ready()
     {
         Angle = Red ? -.523599f : .523599f;

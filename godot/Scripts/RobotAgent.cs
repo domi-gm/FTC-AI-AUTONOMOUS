@@ -20,6 +20,7 @@ public partial class RobotAgent : CharacterBody3D
     public bool FireCommand;
     public float Cooldown;
     public string ShotStatus = "READY";
+    public int ShotsFired, ShotsMade;
     public Node3D Turret;
     public Vector3 LaunchOrigin => _turrets[Inventory.Count % _turrets.Count].GlobalPosition + Vector3.Up * .06f;
     private Node3D[] _modules = new Node3D[4];
@@ -141,6 +142,7 @@ public partial class RobotAgent : CharacterBody3D
         }
         ShotStatus = "LAUNCHED";
         var ball = Game.SpawnBall(Inventory[0], origin); Inventory.RemoveAt(0);
+        ball.ShotRobotIndex=Game.Robots.IndexOf(this); ShotsFired++;
         ball.LinearVelocity = launch;
         Cooldown = .45f / TurretCount;
     }
