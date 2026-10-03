@@ -36,7 +36,15 @@ public partial class PracticePath : Node3D
         if (difference.Length() < .035f) { Current++; return Command(); }
         return difference.Normalized() * Mathf.Min(1, difference.Length() * 4);
     }
-    private void Rebuild()
+    public void ClearPath()
+    {
+        Points.Clear();
+        Following = false;
+        Current = 0;
+        Rebuild();
+        if (Game != null) Game.Status = "Path cleared";
+    }
+    public void Rebuild()
     {
         foreach (var n in GetChildren()) { RemoveChild(n); n.QueueFree(); }
         for (int i = 0; i < Points.Count; i++)

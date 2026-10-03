@@ -14,8 +14,8 @@ public partial class Simulation : Node3D
     public SimulatorHud Hud;
     public PracticePath PathEditor;
     public AimPreview Aim;
-    public bool Started, Paused, Practice = true, TwoPlayers;
-    public bool Running => Started && !Paused && (Practice || Elapsed < 158);
+    public bool Started, Paused, Practice = true, TwoPlayers, AutonomousDrill;
+    public bool Running => Started && !Paused && (Practice || (AutonomousDrill ? Elapsed < 30 : Elapsed < 158));
     public float Elapsed;
     public int RedScore, BlueScore;
     public string Status = "Godot C# / local prototype";
@@ -121,8 +121,8 @@ public partial class Simulation : Node3D
     {
         if (!Running) return;
         Elapsed += (float)delta;
-        if (!Practice && Elapsed >= 158) { SetFrozen(true); Hud.ShowResults(); return; }
-        bool transition = !Practice && Elapsed >= 30 && Elapsed < 38;
+        if (!Practice && (AutonomousDrill ? Elapsed >= 30 : Elapsed >= 158)) { SetFrozen(true); Hud.ShowResults(); return; }
+        bool transition = !Practice && !AutonomousDrill && Elapsed >= 30 && Elapsed < 38;
         foreach (var robot in Robots) robot.SetPhysicsProcess(!transition);
         if (!transition)
         {
@@ -148,7 +148,17 @@ public partial class Simulation : Node3D
     }
     private void ReadPlayer(RobotAgent robot, bool second)
     {
-        if (!Practice && Elapsed < 30) { robot.Bot = true; return; }
+        if (!Practice && Elapsed < 30)
+        {
+            if (!second && PathEditor != null && PathEditor.Following)
+            {
+                robot.Bot = false;
+                robot.Command = PathEditor.Command();
+                return;
+            }
+            robot.Bot = true;
+            return;
+        }
         robot.Bot = false;
         bool Held(Key key) => Input.IsPhysicalKeyPressed(key);
         var v = second ? new Vector3((Held(Key.Right) ? 1 : 0) - (Held(Key.Left) ? 1 : 0), 0, (Held(Key.Down) ? 1 : 0) - (Held(Key.Up) ? 1 : 0))
@@ -401,6 +411,16 @@ public partial class Simulation : Node3D
             async System.Threading.Tasks.Task Frames(int n) { for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame); }
             int Count() => Balls.Count + Robots.Sum(r => r.Inventory.Count);
             Testing = true; Practice = true; Reset(); foreach (var r in Robots) r.Bot = false;
+            Hud.ShowMenu();
+            Hud.NavigateTo(SimulatorHud.ScreenType.RobotCreator);
+            Hud.NavigateTo(SimulatorHud.ScreenType.AutonomousPathing);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Settings);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Help);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Pause);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Results);
+            Hud.GoBack();
+            Hud.CloseMenu();
+            Check(true, "All HUD menu screens navigate and render cleanly");
             var oldCameraTransform = Camera.GlobalTransform;
             var oldProjection = Camera.Projection;
             Vector3 center = Arena.World(Arena.Center, Arena.Center);
