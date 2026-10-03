@@ -76,6 +76,8 @@ public partial class Hive : Node3D
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
+        foreach (var bucket in Contents)
+            bucket.RemoveAll(ball => !GodotObject.IsInstanceValid(ball) || !Inside(ball));
         LoadTorque = 0;
         for (int bucket = 0; bucket < 2; bucket++)
             for (int i = 0; i < Contents[bucket].Count; i++)
@@ -96,8 +98,6 @@ public partial class Hive : Node3D
         if (Angle > RestAngle) { Angle = RestAngle; if (AngularVelocity > 0) AngularVelocity *= -.05f; }
         if (Angle < -RestAngle) { Angle = -RestAngle; if (AngularVelocity < 0) AngularVelocity *= -.05f; }
         Rotation = new(Angle, 0, 0);
-        foreach (var bucket in Contents)
-            bucket.RemoveAll(ball => !GodotObject.IsInstanceValid(ball) || !Inside(ball));
         int nextSide = Angle >= RestAngle - .00872665f ? -1 : Angle <= -RestAngle + .00872665f ? 1 : 0;
         if (nextSide != 0 && nextSide != _upSide)
         {

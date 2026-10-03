@@ -72,14 +72,27 @@ public partial class Arena : Node3D
             foreach (int sign in new[] {-1,1})
                 Box(this,"TableLeg",World(tableX+sign*.15f,tableY,.34f),new(.025f,.68f,.025f),Steel);
         }
+        var skyShader = new Shader { Code = @"
+shader_type sky;
+void sky() {
+    vec2 uv = vec2(atan(EYEDIR.z, EYEDIR.x), asin(clamp(EYEDIR.y,-1.0,1.0))) * 110.0;
+    vec2 cell = floor(uv);
+    float seed = fract(sin(dot(cell,vec2(127.1,311.7)))*43758.5453);
+    vec2 offset = vec2(seed, fract(seed*17.13))*.7+.15;
+    float d = length(fract(uv)-offset);
+    float star = (1.0-smoothstep(.015,.07,d))*step(.97,seed);
+    COLOR = vec3(.028,.042,.068) + vec3(.55,.64,.8)*star;
+}" };
         var environment = new WorldEnvironment { Environment = new Godot.Environment
         {
-            BackgroundMode = Godot.Environment.BGMode.Color, BackgroundColor = new("101521"),
+            BackgroundMode = Godot.Environment.BGMode.Sky,
+            Sky = new Sky { SkyMaterial = new ShaderMaterial { Shader=skyShader } },
             AmbientLightSource = Godot.Environment.AmbientSource.Color, AmbientLightColor = new("b6c8df"), AmbientLightEnergy = .55f,
             TonemapMode = Godot.Environment.ToneMapper.Linear
         } };
         AddChild(environment);
-        AddChild(new DirectionalLight3D { RotationDegrees = new(-65, -25, 0), LightEnergy = .8f, ShadowEnabled = true });
+        AddChild(new DirectionalLight3D { RotationDegrees = new(-65, -25, 0), LightEnergy = .8f,
+            ShadowEnabled = true, DirectionalShadowMaxDistance = 12, ShadowBlur = 1.5f });
     }
     private void Zone(float x, float y, float width, float length, Color color)
     {

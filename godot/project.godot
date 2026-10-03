@@ -36,6 +36,8 @@ common/physics_ticks_per_second=120
 
 [rendering]
 
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=4096
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

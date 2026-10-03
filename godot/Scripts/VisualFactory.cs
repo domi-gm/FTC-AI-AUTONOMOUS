@@ -5,7 +5,8 @@ public static class VisualFactory
     public static readonly Color Red = new("e0453a"), Blue = new("3b7de0"), Gold = new("f2c230"), Steel = new("71818c");
     public static StandardMaterial3D Material(Color color, bool unshaded = false) => new()
     {
-        AlbedoColor = color, Roughness = 0.65f,
+        AlbedoColor = color, Roughness = color == Steel ? .32f : .78f,
+        Metallic = color == Steel ? .55f : 0,
         ShadingMode = unshaded ? BaseMaterial3D.ShadingModeEnum.Unshaded : BaseMaterial3D.ShadingModeEnum.PerPixel,
         Transparency = color.A < 1 ? BaseMaterial3D.TransparencyEnum.Alpha : BaseMaterial3D.TransparencyEnum.Disabled,
         CullMode = BaseMaterial3D.CullModeEnum.Disabled

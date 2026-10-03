@@ -15,8 +15,12 @@ public partial class SimulatorHud : CanvasLayer
         _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
         _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect); AddChild(_root);
         var theme = new Theme { DefaultFontSize = 17 };
+        if (ResourceLoader.Exists("res://Assets/Fonts/Poppins-Regular.ttf"))
+            theme.DefaultFont=GD.Load<FontFile>("res://Assets/Fonts/Poppins-Regular.ttf");
         var buttonStyle = new StyleBoxFlat { BgColor = new("1a2231"), BorderColor = new("3b485d"), BorderWidthBottom = 1, BorderWidthTop = 1, BorderWidthLeft = 1, BorderWidthRight = 1, ContentMarginLeft = 18, ContentMarginRight = 18, ContentMarginTop = 12, ContentMarginBottom = 12 };
         theme.SetStylebox("normal", "Button", buttonStyle);
+        buttonStyle.CornerRadiusTopLeft=6; buttonStyle.CornerRadiusTopRight=6;
+        buttonStyle.CornerRadiusBottomLeft=6; buttonStyle.CornerRadiusBottomRight=6;
         var hover = (StyleBoxFlat)buttonStyle.Duplicate(); hover.BgColor = new("34445a"); hover.BorderColor = VisualFactory.Gold;
         theme.SetStylebox("hover", "Button", hover); theme.SetStylebox("pressed", "Button", hover);
         _root.Theme = theme;

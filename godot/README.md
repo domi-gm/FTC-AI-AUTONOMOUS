@@ -1,26 +1,24 @@
-# FTC Simulator — Godot + C#
+# Godot local FTC simulator
 
-Simulator local 3D inspirat de Turtle Sim. Deschide project.godot în Godot
-4.7.2 .NET, compilează și apasă F5. Scena principală: Scenes/Simulator.tscn.
-Multiplayerul online nu face parte din scop.
+Open project.godot in Godot 4.7.2 .NET, build C#, and press F5.
+WASD moves relative to the camera; Q/E turns; Shift/J collects; Space launches;
+T changes HIVE/FLOWER target; H drops human-player nectar; K extracts from a
+nearby flower. Right-drag orbits, wheel zooms, C changes view, R resets, Escape
+pauses. In Practice, B/N adds pieces; F2 edits paths, click adds a point,
+Backspace removes it, P follows. F5/F9 saves/loads the scene under user://.
 
-Comenzi:
-- WASD: mișcare relativă la cameră; Q/E: rotirea robotului.
-- Mouse dreapta + deplasare: rotirea camerei; rotiță: zoom; C: schimbă vederea.
-- Shift/J: colectare; Space: lansare; T: țintă HIVE/flower.
-- H: human player; K: extragere din flower.
-- Practice: B/N adaugă pollen/nectar; F2 editare traseu; click adaugă punct;
-  Backspace șterge ultimul punct; P urmărește traseul.
-- Escape: pauză; R: reset; F5/F9: salvează/încarcă starea.
+Includes physical balls and hollow flowers, a tipping HIVE, configurable robots,
+AprilTag visuals, match phases, paths and save/load. Rules, swerve traction and
+HIVE impact coupling are approximate. Online multiplayer is excluded.
 
-Datele persistente sunt în user:// din Godot. Vechea scenă Main.tscn și
-instrucțiunile din docs/GRID_TUTORIAL.md rămân disponibile.
+Trajectory geometry updates every rendered frame; collision prediction updates
+at 20 Hz and is rechecked before firing. A green path is a prediction, not a
+scoring guarantee. Graphics include MSAA 4x, metal materials, improved shadows,
+procedural stars, Poppins type, and launcher detail.
 
-Verificare: dotnet build, apoi Godot cu
---headless --path <folder-proiect> -- --smoke-test.
-Testul verifică orientarea camerei, distribuția inițială, lansarea liberă și
-blocată, coliziunile, colectarea, pauza, restaurarea, HIVE și resetarea.
-
-Explicații și limite: docs/EXPLICATIE_SIMULATOR_3D.md.
-Implementarea este încă o aproximare, nu o reproducere identică sau un arbitru
-oficial de concurs.
+Checks: dotnet build; Godot --headless --path . -- --smoke-test.
+Benchmarks: --performance-test (headless), --rendered-preview-test (rendered).
+Local measurements: planner ~0.06 ms versus ~11 ms before, rendered preview
+~94 FPS with no origin/target lag in the moving-robot check. Results depend on
+scene and hardware. Disable anti_aliasing/quality/msaa_3d in project.godot on
+slower GPUs if necessary.

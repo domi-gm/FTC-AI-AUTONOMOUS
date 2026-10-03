@@ -25,13 +25,20 @@ public partial class RobotAgent : CharacterBody3D
     private Node3D[] _modules = new Node3D[4];
     private float _botStuck, _botAvoid;
     private Vector3 _previous;
+    private PhysicsShapeQueryParameters3D _rotationQuery;
+    private BoxShape3D _rotationShape;
     public Vector3 Front => -GlobalBasis.Z;
     public override void _Ready()
     {
         CollisionLayer = 4; CollisionMask = 1 | 4;
+        _rotationShape = new BoxShape3D { Size = new(Width-.006f,.294f,Length-.006f) };
+        _rotationQuery = new PhysicsShapeQueryParameters3D { Shape=_rotationShape, CollisionMask=1|4,
+            Exclude=new Godot.Collections.Array<Rid> {GetRid()} };
         AddChild(new CollisionShape3D { Position = new(0, .15f, 0), Shape = new BoxShape3D { Size = new(Width, .3f, Length) } });
         var color = Red ? VisualFactory.Red : Blue;
         Box(this, "Chassis", new(0, .11f, 0), new(Width, .15f, Length), new("242b34"));
+        Box(this, "Deck", new(0,.192f,0),new(Width-.035f,.012f,Length-.035f),Steel);
+        Box(this, "Electronics", new(0,.215f,.07f),new(.15f,.035f,.10f),new("19222e"));
         foreach (int s in new[] { -1, 1 })
         {
             Box(this, "BumperSide", new(s * Width / 2, .19f, 0), new(.028f, .12f, Length), color);
@@ -53,8 +60,14 @@ public partial class RobotAgent : CharacterBody3D
         {
             var turret = new Node3D { Name = "Turret" + j, Position = new((j - (TurretCount - 1) / 2f) * Width / TurretCount, .43f, 0) }; AddChild(turret);
             Cylinder(turret, "Turntable", Vector3.Zero, .12f / Mathf.Sqrt(TurretCount), .045f, Steel);
-            var barrel = Box(turret, "Launcher", new(0, .06f, -.10f), new(.10f, .12f, .26f), Gold);
-            barrel.RotationDegrees = new(-25, 0, 0); _turrets.Add(turret);
+            Box(turret, "LauncherFloor", new(0,.015f,-.10f),new(.10f,.018f,.26f),Gold);
+            foreach (int sign in new[] {-1,1})
+            {
+                Box(turret,"LauncherRail",new(sign*.057f,.06f,-.10f),new(.012f,.07f,.26f),Gold);
+                var wheel=Cylinder(turret,"Flywheel",new(sign*.061f,.06f,-.06f),.047f,.023f,new("161c25"));
+                wheel.RotationDegrees=new(0,0,90);
+            }
+            _turrets.Add(turret);
         }
         Turret = _turrets[0];
         var plate = Label(this, "Team", $"{(Red ? "R" : "B")}{Number}", new(0, .20f, Length / 2 + .018f), Colors.White, 50);
@@ -72,15 +85,13 @@ public partial class RobotAgent : CharacterBody3D
         // MoveAndSlide verifică întregul traseu al translației, nu doar poziția finală.
         MoveAndSlide();
         // Verificăm volumul orientat înainte de a accepta rotația.
-        float previousYaw = Rotation.Y;
-        Rotation = new(0, previousYaw + TurnCommand * TurnSpeed * dt, 0);
-        var query = new PhysicsShapeQueryParameters3D
+        if (Mathf.Abs(TurnCommand) > .0001f)
         {
-            Shape = new BoxShape3D { Size = new(Width - .006f, .294f, Length - .006f) },
-            Transform = GlobalTransform * new Transform3D(Basis.Identity, new Vector3(0, .15f, 0)),
-            CollisionMask = 1 | 4, Exclude = new Godot.Collections.Array<Rid> { GetRid() }
-        };
-        if (GetWorld3D().DirectSpaceState.IntersectShape(query, 1).Count > 0) Rotation = new(0, previousYaw, 0);
+            float previousYaw=Rotation.Y;
+            Rotation=new(0,previousYaw+TurnCommand*TurnSpeed*dt,0);
+            _rotationQuery.Transform=GlobalTransform*new Transform3D(Basis.Identity,new Vector3(0,.15f,0));
+            if (GetWorld3D().DirectSpaceState.IntersectShape(_rotationQuery,1).Count>0) Rotation=new(0,previousYaw,0);
+        }
         Position = new(Position.X, 0, Position.Z);
         foreach (var module in _modules)
         {
@@ -96,8 +107,14 @@ public partial class RobotAgent : CharacterBody3D
             foreach (var flower in Game.Flowers)
             {
                 var offset = ToLocal(flower.Base);
-                if (flower.Balls.Count > 0 && Mathf.Abs(offset.X) < Width * .6f && offset.Z < -.05f && offset.Z > -Length / 2 - .20f)
-                { var ball = flower.ReleaseBottom(); Inventory.Add(ball.Kind); Game.RemoveBall(ball); break; }
+                bool inReach = (offset.Z < -.05f && offset.Z > -Length/2-.20f)
+                    || (IntakeCount>1 && offset.Z>.05f && offset.Z<Length/2+.20f);
+                if (flower.Balls.Count>0 && Mathf.Abs(offset.X)<Width*.6f && inReach)
+                {
+                    var ball=flower.ReleaseBottom();
+                    if (ball!=null) { Inventory.Add(ball.Kind); Game.RemoveBall(ball); }
+                    break;
+                }
             }
             foreach (var ball in Game.Balls)
             {
@@ -112,7 +129,7 @@ public partial class RobotAgent : CharacterBody3D
     }
     public void Fire()
     {
-        if (Cooldown > 0 || Inventory.Count == 0) return;
+        if (!Game.Running || Cooldown > 0 || Inventory.Count == 0) return;
         var origin = LaunchOrigin;
         var target = Game.Target(this);
         float radius = Inventory[0] == PieceKind.Pollen ? .03556f : .04572f;

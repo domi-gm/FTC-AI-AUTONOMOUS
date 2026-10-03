@@ -41,6 +41,8 @@ public partial class Simulation : Node3D
         Reset(false);
         Hud.ShowMenu();
         if (OS.GetCmdlineUserArgs().Contains("--smoke-test")) CallDeferred(MethodName.SmokeTest);
+        if (OS.GetCmdlineUserArgs().Contains("--performance-test")) CallDeferred(MethodName.PerformanceTest);
+        if (OS.GetCmdlineUserArgs().Contains("--rendered-preview-test")) CallDeferred(MethodName.RenderedPreviewTest);
     }
     public void Reset(bool start = true)
     {
@@ -99,7 +101,14 @@ public partial class Simulation : Node3D
         var ball = new GamePiece { Kind = kind, Position = position, Name = "Ball" };
         _session.AddChild(ball, true); Balls.Add(ball); return ball;
     }
-    public void RemoveBall(GamePiece ball) { Balls.Remove(ball); ball.QueueFree(); }
+    public void RemoveBall(GamePiece ball)
+    {
+        foreach (var hive in new[] { RedHive, BlueHive })
+            foreach (var bucket in hive.Contents) bucket.Remove(ball);
+        foreach (var flower in Flowers) flower.Balls.Remove(ball);
+        foreach (var stock in HumanStock) stock.Remove(ball);
+        _pausedVelocities.Remove(ball); Balls.Remove(ball); ball.QueueFree();
+    }
     public Vector3 Target(RobotAgent robot)
     {
         if (AimFlower && !robot.Bot) return _flowers.Where((p, i) => robot.Red ? i < 2 : i >= 2).OrderBy(p => p.DistanceSquaredTo(robot.Position)).First() + Vector3.Up * .05f;
@@ -184,8 +193,8 @@ public partial class Simulation : Node3D
                 case Key.C: Camera.Mode = (Camera.Mode + 1) % 3; break;
                 case Key.R: Reset(); break;
                 case Key.T: AimFlower = !AimFlower; break;
-                case Key.B: if (Practice) SpawnBall(PieceKind.Pollen, Player.Position + Player.Front * .5f + Vector3.Up * .12f); break;
-                case Key.N: if (Practice) SpawnBall(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar, Player.Position + Player.Front * .5f + Vector3.Up * .12f); break;
+                case Key.B: if (Practice && Running) SpawnBall(PieceKind.Pollen, Player.Position + Player.Front * .5f + Vector3.Up * .12f); break;
+                case Key.N: if (Practice && Running) SpawnBall(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar, Player.Position + Player.Front * .5f + Vector3.Up * .12f); break;
                 case Key.H: DropHuman(Player.Red); break;
                 case Key.K: KnockFlower(Player); break;
                 case Key.F5: Save(); break;
@@ -206,6 +215,7 @@ public partial class Simulation : Node3D
     }
     public void KnockFlower(RobotAgent robot)
     {
+        if (!Running) return;
         var column = Flowers.OrderBy(f => f.Base.DistanceSquaredTo(robot.Position)).First();
         if (column.Base.DistanceTo(robot.Position) < .5f) column.ReleaseBottom();
     }
@@ -259,6 +269,7 @@ public partial class Simulation : Node3D
         return new Snapshot
         {
             Version = 2, Practice = Practice, Time = Elapsed, TwoPlayers = TwoPlayers, Profile = Profile,
+            AimFlower = AimFlower,
             RedAngle = RedHive.Angle, BlueAngle = BlueHive.Angle, RedSide = RedHive.UpSide, BlueSide = BlueHive.UpSide,
             RedAngularVelocity = RedHive.AngularVelocity, BlueAngularVelocity = BlueHive.AngularVelocity,
             RedTips = RedHive.Tips, BlueTips = BlueHive.Tips, Tokens = (int[])HumanTokens.Clone(),
@@ -276,9 +287,29 @@ public partial class Simulation : Node3D
     public void Restore(Snapshot data)
     {
         if (data == null || data.Version != 2 || data.Robots?.Length != 4 || data.Balls == null || data.Tokens?.Length != 2) throw new Exception("Unsupported snapshot");
+        if (!float.IsFinite(data.Time+data.RedAngle+data.BlueAngle+data.RedAngularVelocity+data.BlueAngularVelocity)
+            || data.Time<0 || Mathf.Abs(data.RedAngle)>Mathf.Pi/6+.001f || Mathf.Abs(data.BlueAngle)>Mathf.Pi/6+.001f
+            || Math.Abs(data.RedSide)!=1 || Math.Abs(data.BlueSide)!=1) throw new Exception("Invalid match or HIVE state");
+        foreach (var r in data.Robots)
+            if (r==null || !float.IsFinite(r.X+r.Z+r.Yaw+r.Vx+r.Vz+r.Cooldown+r.Speed+r.Acceleration+r.TurnSpeed)
+                || r.X<0 || r.X>Arena.Size || r.Z>0 || r.Z < -Arena.Size || r.Inventory==null || r.Inventory.Length>4
+                || r.Inventory.Any(k => !Enum.IsDefined(k)) || r.Speed<=0 || r.Acceleration<=0 || r.TurnSpeed<=0)
+                throw new Exception("Invalid robot state");
         foreach (var b in data.Balls)
-            if (!float.IsFinite(b.X + b.Y + b.Z + b.Vx + b.Vy + b.Vz) || Math.Abs(b.X) > 30 || Math.Abs(b.Y) > 30 || Math.Abs(b.Z) > 30) throw new Exception("Invalid ball position");
-        Practice = data.Practice; TwoPlayers = data.TwoPlayers; Profile = data.Profile ?? new RobotProfile(); Profile.Validate(); Reset(); Elapsed = data.Time;
+        {
+            if (b==null || !float.IsFinite(b.X+b.Y+b.Z+b.Vx+b.Vy+b.Vz+b.Wx+b.Wy+b.Wz) || Math.Abs(b.X)>30
+                || Math.Abs(b.Y)>30 || Math.Abs(b.Z)>30 || !Enum.IsDefined(b.Kind)) throw new Exception("Invalid ball state");
+            if (b.Container!="free")
+            {
+                string[] parts=b.Container?.Split(':');
+                if (parts?.Length!=2 || !int.TryParse(parts[1],out int index) || index<0
+                    || (parts[0]=="flower" ? index>=4 : index>=2)
+                    || (parts[0]!="flower" && parts[0]!="red" && parts[0]!="blue" && parts[0]!="human"))
+                    throw new Exception("Invalid piece container");
+            }
+        }
+        var profile=data.Profile ?? new RobotProfile(); profile.Validate();
+        Practice=data.Practice; TwoPlayers=data.TwoPlayers; Profile=profile; AimFlower=data.AimFlower; Reset(); Elapsed=data.Time;
         for (int i = 0; i < 4; i++)
         {
             var d = data.Robots[i]; var r = Robots[i]; r.Position = new(d.X, 0, d.Z); r.Rotation = new(0, d.Yaw, 0);
@@ -309,6 +340,7 @@ public partial class Simulation : Node3D
     {
         public int Version { get; set; } public bool Practice { get; set; } public bool TwoPlayers { get; set; } public float Time { get; set; }
         public RobotProfile Profile { get; set; }
+        public bool AimFlower { get; set; }
         public float RedAngle { get; set; } public float BlueAngle { get; set; } public int RedSide { get; set; } public int BlueSide { get; set; }
         public float RedAngularVelocity { get; set; } public float BlueAngularVelocity { get; set; }
         public int RedTips { get; set; } public int BlueTips { get; set; } public int[] Tokens { get; set; }
@@ -319,6 +351,39 @@ public partial class Simulation : Node3D
     public sealed class BallData { public PieceKind Kind { get; set; } public float X { get; set; } public float Y { get; set; } public float Z { get; set; }
         public float Vx { get; set; } public float Vy { get; set; } public float Vz { get; set; } public float Wx { get; set; } public float Wy { get; set; } public float Wz { get; set; }
         public string Container { get; set; } public int Slot { get; set; } }
+    public async void RenderedPreviewTest()
+    {
+        try
+        {
+            if (DisplayServer.GetName()=="headless") throw new Exception("This check requires a rendered window");
+            Testing=true; Practice=true; Reset(); foreach (var r in Robots) r.Bot=false;
+            Hud.ShowPause(false); Player.Command=Vector3.Right;
+            float originError=0, targetError=0;
+            var watch=System.Diagnostics.Stopwatch.StartNew();
+            for (int i=0;i<120;i++)
+            {
+                await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
+                originError=Mathf.Max(originError,Aim.DisplayOrigin.DistanceTo(Player.LaunchOrigin));
+                targetError=Mathf.Max(targetError,Aim.DisplayEnd.DistanceTo(Target(Player)));
+                await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+            }
+            watch.Stop();
+            GD.Print($"PREVIEW rendered: {120/watch.Elapsed.TotalSeconds:0.0} FPS; origin lag {originError*100:0.000} cm; target lag {targetError*100:0.000} cm; {Aim.PlanUpdates} collision refreshes");
+            if (originError>.002f || targetError>.002f) throw new Exception("Trajectory lags behind the moving robot");
+            GD.Print("PASS: Rendered trajectory follows moving robot without the old 200 ms delay"); GetTree().Quit();
+        }
+        catch (Exception ex) { GD.PushError(ex.ToString()); GetTree().Quit(1); }
+    }
+    public async void PerformanceTest()
+    {
+        Testing = true; Practice = true; Reset(); foreach (var r in Robots) r.Bot = false;
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        for (int i=0;i<30;i++) ShotPlanner.TryPlan(Player,Player.LaunchOrigin,Target(Player),.03556f,out _);
+        watch.Stop(); GD.Print($"PERF planner mean: {watch.Elapsed.TotalMilliseconds/30:0.000} ms");
+        GetTree().Quit();
+    }
     public async void SmokeTest()
     {
         try
@@ -364,6 +429,11 @@ public partial class Simulation : Node3D
             var snapshot = JsonSerializer.Deserialize<Snapshot>(JsonSerializer.Serialize(Capture()));
             Restore(snapshot); foreach (var r in Robots) r.Bot = false;
             Check(Count() == 56 && Player.Inventory.Count == 3 && RedHive.Contents.Sum(c => c.Count) == 4, "Save/load preserves free, held and stored pieces");
+            var invalid = JsonSerializer.Deserialize<Snapshot>(JsonSerializer.Serialize(Capture()));
+            invalid.Balls[0].Container="flower:9";
+            var playerBeforeInvalid=Player; bool rejected=false;
+            try { Restore(invalid); } catch { rejected=true; }
+            Check(rejected && Player==playerBeforeInvalid && Count()==56,"Invalid snapshot is rejected before replacing the scene");
             var flying = Balls.First(b => !b.Stored); flying.LinearVelocity = new(1, 2, 3);
             SetFrozen(true); await Frames(5); SetFrozen(false);
             Check(flying.LinearVelocity.DistanceTo(new(1, 2, 3)) < .001f, "Pause restores velocities");
@@ -380,6 +450,21 @@ public partial class Simulation : Node3D
             await Frames(5);
             Check(Player.Inventory.Count == 1 && Balls.Count == countBeforeIntake, "Front intake transfers a floor piece exactly once");
             Player.Intake = false;
+            Player.Inventory.Clear(); Player.IntakeCount=2;
+            var rearColumn=Flowers[0];
+            Player.Position=rearColumn.Base+rearColumn.Inward*.31f;
+            Vector3 toward=rearColumn.Inward;
+            Player.Rotation=new(0,Mathf.Atan2(-toward.X,-toward.Z),0);
+            Player.Intake=true; await Frames(5);
+            Check(Player.Inventory.Count>0 && rearColumn.Balls.Count<4,"Rear intake extracts from a flower");
+            Player.Intake=false;
+            var member=RedHive.Contents.SelectMany(b=>b).First(); RemoveBall(member);
+            await Frames(2);
+            Check(!RedHive.Contents.SelectMany(b=>b).Contains(member),"Removing a physical piece also removes container references");
+            SetFrozen(true); Paused=true;
+            int flowerBeforePause=rearColumn.Balls.Count; KnockFlower(Player);
+            Check(rearColumn.Balls.Count==flowerBeforePause,"Paused practice cannot extract pieces");
+            Paused=false; SetFrozen(false);
             Reset(); foreach (var r in Robots) r.Bot = false;
             int side = RedHive.UpSide;
             var physical = RedHive.Contents[side < 0 ? 0 : 1][0];

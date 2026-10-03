@@ -1,51 +1,64 @@
 using Godot;
+using System;
 
-/// <summary>Caută o parabolă care ajunge la țintă fără să traverseze pereții.</summary>
+/// <summary>Caută în ordinea vitezei; prima traiectorie liberă este cea cu cost minim.</summary>
 public static class ShotPlanner
 {
     public const float Gravity = 9.81f;
     public const float MaximumSpeed = 17.78f;
+    public readonly record struct Plan(Vector3 Velocity, float FlightTime);
+    private readonly record struct Candidate(Vector3 Velocity, float Time, float Cost);
+    public static Vector3 VelocityFor(Vector3 origin, Vector3 target, float time)
+        => (target-origin)/time + Vector3.Up*(Gravity*(time+1f/Engine.PhysicsTicksPerSecond)/2);
+    public static Vector3 PositionAt(Vector3 origin, Vector3 velocity, float time)
+        => origin + velocity*time - Vector3.Up*(Gravity*time*(time+1f/Engine.PhysicsTicksPerSecond)/2);
     public static bool TryPlan(RobotAgent robot, Vector3 origin, Vector3 target, float radius, out Vector3 velocity)
     {
-        velocity = Vector3.Zero;
-        var query = new PhysicsShapeQueryParameters3D
+        bool clear = TrySolve(robot, origin, target, radius, out var plan);
+        velocity = plan.Velocity; return clear;
+    }
+    public static bool TrySolve(RobotAgent robot, Vector3 origin, Vector3 target, float radius, out Plan plan)
+    {
+        plan = default;
+        const float sampleStep = 1f/30;
+        // Săgeata parabolei față de coarda unui segment este g*dt²/8.
+        // Extinderea sferei acoperă această eroare la verificarea continuă.
+        using var sphere = new SphereShape3D { Radius = radius + .002f + Gravity*sampleStep*sampleStep/8 };
+        using var query = new PhysicsShapeQueryParameters3D
         {
-            Shape = new SphereShape3D { Radius = radius + .002f },
-            CollisionMask = 1 | 4,
-            Exclude = new Godot.Collections.Array<Rid> { robot.GetRid() },
-            Margin = .001f
+            Shape = sphere, CollisionMask = 1 | 4,
+            Exclude = new Godot.Collections.Array<Rid> { robot.GetRid() }, Margin = .001f
         };
         var space = robot.GetWorld3D().DirectSpaceState;
         query.Transform = new Transform3D(Basis.Identity, origin);
         if (space.IntersectShape(query, 1).Count > 0) return false;
-        float step = 1f / Engine.PhysicsTicksPerSecond;
-        float best = float.MaxValue;
-        for (float time = .25f; time <= 1.5f; time += .025f)
+        var candidates = new Candidate[51];
+        for (int i=0;i<candidates.Length;i++)
         {
-            // Jolt aplică gravitația la pași discreți; compensăm jumătate de pas.
-            Vector3 candidate = (target - origin) / time + Vector3.Up * (Gravity * (time + step) / 2);
-            if (candidate.Length() > MaximumSpeed) continue;
+            float time = .25f + i*.025f;
+            Vector3 velocity = VelocityFor(origin,target,time);
+            candidates[i] = new(velocity,time,velocity.LengthSquared());
+        }
+        Array.Sort(candidates, (a,b) => a.Cost.CompareTo(b.Cost));
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Cost > MaximumSpeed*MaximumSpeed) break;
             bool blocked = false;
             Vector3 previous = origin;
-            for (float t = step; t < time + step; t += step)
+            int segments = Mathf.CeilToInt(candidate.Time/sampleStep);
+            for (int i=1;i<=segments;i++)
             {
-                float sample = Mathf.Min(t, time);
-                Vector3 point = origin + candidate * sample - Vector3.Up * (Gravity * sample * (sample + step) / 2);
-                query.Transform = new Transform3D(Basis.Identity, previous);
-                query.Motion = point - previous;
+                Vector3 point = PositionAt(origin,candidate.Velocity,candidate.Time*i/segments);
+                query.Transform = new Transform3D(Basis.Identity,previous); query.Motion = point-previous;
                 var fractions = space.CastMotion(query);
-                if (fractions.Length > 0 && fractions[0] < .999f) { blocked = true; break; }
-                // CastMotion ignoră suprapunerile existente. Verificăm și capătul
-                // fiecărui pas, altfel un pas scurt poate începe deja în obstacol.
-                query.Transform = new Transform3D(Basis.Identity, point);
-                query.Motion = Vector3.Zero;
-                if (space.IntersectShape(query, 1).Count > 0) { blocked = true; break; }
-                previous = point;
+                if (fractions.Length > 0 && fractions[0] < .999f) { blocked=true; break; }
+                query.Transform = new Transform3D(Basis.Identity,point); query.Motion=Vector3.Zero;
+                // CastMotion nu detectează o suprapunere existentă: păstrăm controlul capetelor.
+                if (space.IntersectShape(query,1).Count > 0) { blocked=true; break; }
+                previous=point;
             }
-            if (blocked) continue;
-            float cost = candidate.LengthSquared();
-            if (cost < best) { best = cost; velocity = candidate; }
+            if (!blocked) { plan = new(candidate.Velocity,candidate.Time); return true; }
         }
-        return best < float.MaxValue;
+        return false;
     }
 }
