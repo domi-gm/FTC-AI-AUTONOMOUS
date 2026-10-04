@@ -16,10 +16,10 @@ public static class VisualFactory
         var node = new MeshInstance3D { Name = name, Mesh = mesh, Position = at, MaterialOverride = Material(color) };
         parent.AddChild(node); return node;
     }
-    public static MeshInstance3D Box(Node3D parent, string name, Vector3 at, Vector3 size, Color color, bool solid = false)
+    public static MeshInstance3D Box(Node3D parent, string name, Vector3 at, Vector3 size, Color color, bool solid = false, PhysicsMaterial physicsMaterial = null)
     {
         var node = Mesh(parent, name, new BoxMesh { Size = size }, at, color);
-        if (solid) { var body = new StaticBody3D(); node.AddChild(body); body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } }); }
+        if (solid) { var body = new StaticBody3D { PhysicsMaterialOverride=physicsMaterial }; node.AddChild(body); body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } }); }
         return node;
     }
     public static MeshInstance3D Beam(Node3D parent, string name, Vector3 a, Vector3 b, float width, Color color, bool solid = false)

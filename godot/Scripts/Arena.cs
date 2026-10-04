@@ -10,7 +10,7 @@ public partial class Arena : Node3D
     public static Vector3 World(float x, float y, float z = 0) => new(x, z, -y);
     public override void _Ready()
     {
-        Box(this, "Base", World(Center, Center, -.06f), new(Size + .13f, .12f, Size + .13f), new("141820"), true);
+        Box(this, "Base", World(Center, Center, -.06f), new(Size + .13f, .12f, Size + .13f), new("141820"), true, PieceContactModel.FloorMaterial());
         for (int x = 0; x < 6; x++) for (int y = 0; y < 6; y++)
         {
             float tile = Size / 6;

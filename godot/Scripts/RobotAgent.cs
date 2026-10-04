@@ -163,7 +163,7 @@ public partial class RobotAgent : CharacterBody3D
                 { best = ball.Position.DistanceSquaredTo(GlobalPosition); goal = ball.Position; }
         }
         Vector3 move = goal - GlobalPosition; move.Y = 0;
-        _botStuck = GlobalPosition.DistanceTo(_previous) < .001f && move.Length() > .15f ? _botStuck + dt : 0;
+        _botStuck = GlobalPosition.DistanceTo(_previous) < .12f*dt && move.Length() > .15f ? _botStuck + dt : 0;
         if (_botStuck > .5f) { _botAvoid = 1.2f; _botStuck = 0; }
         if (_botAvoid > 0) { _botAvoid -= dt; move = move.Rotated(Vector3.Up, Mathf.Pi / 2); }
         Command = move.Length() < .1f ? Vector3.Zero : move.Normalized();

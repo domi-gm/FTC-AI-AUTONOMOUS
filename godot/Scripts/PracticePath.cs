@@ -16,7 +16,7 @@ public partial class PracticePath : Node3D
     {
         if (!Following || !Game.Running) { _blockedTime=0; _previousPosition=Game.Player.Position; return; }
         if (Current<Points.Count && Points[Current].DistanceTo(Game.Player.Position)>.05f
-            && _previousPosition.DistanceTo(Game.Player.Position)<.0005f) _blockedTime+=(float)delta;
+            && _previousPosition.DistanceTo(Game.Player.Position)<.06f*(float)delta) _blockedTime+=(float)delta;
         else _blockedTime=0;
         _previousPosition=Game.Player.Position;
         if (_blockedTime>2) { Following=false; Game.Player.Command=Vector3.Zero; Game.Status="Path stopped: blocked for 2 seconds; move the waypoint"; }

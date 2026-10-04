@@ -82,7 +82,7 @@ public static class SimulatorRegressionChecks
         try
         {
             void Check(bool valid,string text) { if (!valid) throw new Exception(text); GD.Print("PASS: "+text); }
-            async Task Frames(int n) { for (int i=0;i<n;i++) await game.ToSignal(game.GetTree(),SceneTree.SignalName.PhysicsFrame); }
+            async Task Frames(int n) { for (int i=0;i<Mathf.CeilToInt(n*Engine.PhysicsTicksPerSecond/120f);i++) await game.ToSignal(game.GetTree(),SceneTree.SignalName.PhysicsFrame); }
             void Reset(bool practice=true) { game.Practice=practice; game.Reset(); foreach (var r in game.Robots) r.Bot=false; }
             game.Testing=true;
             game.Hud.ShowPause(true); Reset();
@@ -139,7 +139,7 @@ public static class SimulatorRegressionChecks
                 "Follower stops and explains a physical obstruction");
             game.PathEditor.ReplacePoints(Array.Empty<float[]>());
             Reset(false); await Frames(3);
-            game.Elapsed=29.995f; game.Player.Velocity=Vector3.Right; game.Player.Command=Vector3.Right;
+            game.Elapsed=30-.5f/Engine.PhysicsTicksPerSecond; game.Player.Velocity=Vector3.Right; game.Player.Command=Vector3.Right;
             game.Player.FireCommand=true;
             int shots=game.Player.ShotsFired; await Frames(3);
             game.Player.Fire();

@@ -14,8 +14,12 @@ public partial class GamePiece : RigidBody3D
         // La referință masele sunt în livre; Godot folosește kg.
         Mass = (Kind == PieceKind.Pollen ? .055f : .091f) * .45359237f;
         ContinuousCd = true;
-        LinearDampMode = DampMode.Replace; LinearDamp = 0; AngularDamp = .25f;
-        PhysicsMaterialOverride = new PhysicsMaterial { Bounce = .28f, Friction = .35f };
+        LinearDampMode=DampMode.Replace; LinearDamp=0;
+        AngularDampMode=DampMode.Replace; AngularDamp=0;
+        float inertia=PieceContactModel.InertiaFactor*Mass*Radius*Radius;
+        Inertia=Vector3.One*inertia;
+        MaxContactsReported=8;
+        PhysicsMaterialOverride=PieceContactModel.BallMaterial();
         CollisionLayer = 2; CollisionMask = 1 | 2 | 4;
         AddChild(new CollisionShape3D { Shape = new SphereShape3D { Radius = Radius } });
         _shader ??= new Shader { Code = @"
@@ -30,5 +34,34 @@ void fragment() {
         var material = new ShaderMaterial { Shader = _shader };
         material.SetShaderParameter("ball_color", Kind == PieceKind.Pollen ? VisualFactory.Gold : Kind == PieceKind.RedNectar ? VisualFactory.Red : VisualFactory.Blue);
         AddChild(new MeshInstance3D { Mesh = new SphereMesh { Radius = Radius, Height = Radius * 2, RadialSegments = 24, Rings = 12 }, MaterialOverride = material });
+    }
+    public override void _IntegrateForces(PhysicsDirectBodyState3D state)
+    {
+        if (Stored || Freeze) return;
+        for (int i=0;i<state.GetContactCount();i++)
+        {
+            // Frânăm numai rostogolirea pe o suprafață de sprijin statică.
+            // Contactele cu alte mingi sunt rezolvate exclusiv de motor.
+            var collider=state.GetContactColliderObject(i);
+            if (collider is not StaticBody3D || collider is AnimatableBody3D) continue;
+            // Jolt raportează această normală în coordonatele lumii, chiar dacă
+            // numele API conține Local; nu o rotim din nou odată cu mingea.
+            Vector3 normal=state.GetContactLocalNormal(i).Normalized();
+            if (normal.Dot(Vector3.Up)<.7f) continue;
+            float inertia=PieceContactModel.InertiaFactor*Mass*Radius*Radius;
+            float twist=state.AngularVelocity.Dot(normal);
+            if (Mathf.Abs(twist)>.01f)
+                state.ApplyTorque(-normal*Mathf.Sign(twist)*inertia*Mathf.Min(PieceContactModel.SpinDeceleration,Mathf.Abs(twist)/(float)state.Step));
+            Vector3 tangent=state.LinearVelocity-normal*state.LinearVelocity.Dot(normal);
+            Vector3 spin=state.AngularVelocity-normal*state.AngularVelocity.Dot(normal);
+            if (tangent.Length()<.005f || spin.Length()<.01f) break;
+            Vector3 slip=tangent+state.AngularVelocity.Cross(-normal*Radius);
+            if (slip.Length()>Mathf.Max(.02f,tangent.Length()*.15f)) break;
+            float torque=Mass*Radius*(1+PieceContactModel.InertiaFactor)*PieceContactModel.RollingDeceleration;
+            // Limităm impulsul ca frâna să nu inverseze singură rotația.
+            torque=Mathf.Min(torque,inertia*spin.Length()/(float)state.Step);
+            state.ApplyTorque(-spin.Normalized()*torque);
+            break;
+        }
     }
 }

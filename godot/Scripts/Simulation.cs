@@ -18,7 +18,8 @@ public partial class Simulation : Node3D
     public bool Finished => !Practice && Elapsed>=158;
     public bool Running => Started && !Paused && !Finished;
     public bool DrivingAllowed => Running && (Practice || Elapsed<30 || Elapsed>=38);
-    public float Elapsed;
+    private double _elapsed;
+    public float Elapsed { get => (float)_elapsed; set => _elapsed=value; }
     public int RedScore, BlueScore;
     public string Status = "Godot C# / local prototype";
     public bool AimFlower;
@@ -45,6 +46,7 @@ public partial class Simulation : Node3D
         if (OS.GetCmdlineUserArgs().Contains("--rendered-preview-test")) CallDeferred(MethodName.RenderedPreviewTest);
         if (OS.GetCmdlineUserArgs().Contains("--audit-test")) CallDeferred(MethodName.AuditTest);
         if (OS.GetCmdlineUserArgs().Contains("--gravity-test")) CallDeferred(MethodName.GravityTest);
+        if (OS.GetCmdlineUserArgs().Contains("--contact-test")) CallDeferred(MethodName.ContactTest);
     }
     public void Reset(bool start = true)
     {
@@ -133,7 +135,8 @@ public partial class Simulation : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (!Running) return;
-        Elapsed += (float)delta;
+        // Acumulăm în double pentru ca pașii mici să nu deriveze cronometrul.
+        _elapsed += delta;
         if (Finished) { Elapsed=158; UpdateScore(); SetFrozen(true); Hud.ShowResults(); return; }
         bool transition = !Practice && Elapsed >= 30 && Elapsed < 38;
         foreach (var robot in Robots)
@@ -389,6 +392,7 @@ public partial class Simulation : Node3D
         public string Container { get; set; } public int Slot { get; set; } }
     public async void AuditTest() => await SimulatorRegressionChecks.Run(this);
     public async void GravityTest() => await SimulatorRegressionChecks.RunGravity(this);
+    public async void ContactTest() => await PieceContactChecks.Run(this);
     public async void RenderedPreviewTest()
     {
         try
@@ -427,7 +431,8 @@ public partial class Simulation : Node3D
         try
         {
             void Check(bool condition, string label) { if (!condition) throw new Exception(label); GD.Print("PASS: " + label); }
-            async System.Threading.Tasks.Task Frames(int n) { for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame); }
+            // Duratele scenariilor originale erau exprimate în pași la 120 Hz.
+            async System.Threading.Tasks.Task Frames(int n) { for (int i=0;i<Mathf.CeilToInt(n*Engine.PhysicsTicksPerSecond/120f);i++) await ToSignal(GetTree(),SceneTree.SignalName.PhysicsFrame); }
             int Count() => Balls.Count + Robots.Sum(r => r.Inventory.Count);
             Testing = true; Practice = true; Reset(); foreach (var r in Robots) r.Bot = false;
             var oldCameraTransform = Camera.GlobalTransform;

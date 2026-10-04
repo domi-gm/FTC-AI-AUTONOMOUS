@@ -30,9 +30,16 @@ project/assembly_name="FTC SIMULATOR"
 
 [physics]
 
-common/physics_ticks_per_second=120
+common/physics_ticks_per_second=1920
+common/max_physics_steps_per_frame=128
 3d/physics_engine="Jolt Physics"
 3d/default_gravity=9.81
+jolt_physics_3d/simulation/penetration_slop=0.001
+jolt_physics_3d/simulation/speculative_contact_distance=0.02
+jolt_physics_3d/simulation/position_steps=4
+jolt_physics_3d/simulation/velocity_steps=16
+jolt_physics_3d/simulation/continuous_cd_movement_threshold=0.25
+jolt_physics_3d/simulation/continuous_cd_max_penetration=0.05
 
 [rendering]
 

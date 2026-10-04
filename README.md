@@ -17,4 +17,7 @@ right-drag orbits, C changes the camera, Escape pauses, and R resets.
 Validation: `dotnet build` in godot/; run Godot with
 `--headless --path godot -- --smoke-test` for integration checks.
 Use `--audit-test` for menu, creator, snapshot, path and match-state regressions.
+Use `--gravity-test` for measured gravity/ballistics and `--contact-test` for
+ball impacts, near misses, rolling, spin and flower-stack settling. Contact
+parameters remain estimates requiring calibration against physical balls.
 Backups, personal explanations, research downloads and build caches are excluded.

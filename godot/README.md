@@ -18,8 +18,9 @@ procedural stars, Poppins type, and launcher detail.
 
 Checks: dotnet build; Godot --headless --path . -- --smoke-test.
 Benchmarks: --performance-test (headless), --rendered-preview-test (rendered).
-Local measurements: planner ~0.06 ms versus ~11 ms before, rendered preview
-~94 FPS with no origin/target lag in the moving-robot check. Results depend on
+Local measurements: planner ~0.06 ms versus ~11 ms before. With the current
+contact settings, rendered preview measured ~65–71 FPS with no origin/target lag
+in the moving-robot check. Results depend on
 scene and hardware. Disable anti_aliasing/quality/msaa_3d in project.godot on
 slower GPUs if necessary.
 
@@ -60,6 +61,26 @@ transition and finished matches without overwriting personal save files.
 Gravity check: Godot --headless --path . -- --gravity-test. Measures both ball
 types in Jolt, a one-metre drop onto the real floor, and ballistic prediction
 against a flying body. Configured/measured gravity is 9.81 m/s^2; a one-metre
-drop takes about 0.450 s versus 0.4515 s analytically. At 120 Hz, numerical
-integration adds about 2.04 cm of fall after 0.5 s; the planner accounts for
-this step. Air drag is absent and bounce/friction remain uncalibrated.
+drop takes about 0.4516 s versus 0.4515 s analytically. At 1920 Hz, numerical
+integration adds about 1.28 mm of fall after 0.5 s; the planner accounts for
+this step. Air drag is absent and contact coefficients remain uncalibrated.
+
+## Ball contacts
+
+PieceContactModel centralizes provisional contact parameters. Each ball contributes
+0.14 bounce, giving 0.28 for ball-ball and ball-floor contacts. Other surfaces
+retain their default zero contribution. Sliding uses Jolt friction; rolling and
+vertical spin receive resistance only on static supporting surfaces. Airborne
+rotation has no hidden damping. Inertia approximates a thin spherical shell.
+These parameters need real drop, roll and impact measurements before claiming
+physical calibration; hole geometry and plastic deformation are absent.
+
+Physics runs at 1920 Hz with 16 velocity and 4 position iterations, a 1 mm
+penetration tolerance, and tighter CCD settings. This costs more CPU and was
+selected after tests of opposite maximum-speed balls and a near miss with 5 mm
+clearance. Match time uses double precision; blocked-motion thresholds use speed
+so they remain independent of physics frequency.
+
+Contact regressions: Godot --headless --path . -- --contact-test. Its 21 checks
+cover different masses, restitution, momentum/energy, 17 fast-impact phases,
+near misses, glancing spin, rolling/spin settling, flower stacks and floor bounce.
