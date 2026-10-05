@@ -26,6 +26,9 @@ public partial class RobotAgent : CharacterBody3D
     private Node3D[] _modules = new Node3D[4];
     private float _botStuck, _botAvoid;
     private Vector3 _previous;
+    private Vector3 _lastCollisionPosition;
+    private bool _needsRecovery=true;
+    private double _decisionTime, _intakeTime;
     private PhysicsShapeQueryParameters3D _rotationQuery;
     private BoxShape3D _rotationShape;
     public Vector3 Front => -GlobalBasis.Z;
@@ -79,30 +82,61 @@ public partial class RobotAgent : CharacterBody3D
         float dt = (float)delta;
         if (!Game.DrivingAllowed) { Velocity = Vector3.Zero; return; }
         Cooldown = Mathf.Max(0, Cooldown - dt);
-        if (Bot) Think(dt);
+        _decisionTime+=delta;
+        if (_decisionTime+1e-9>=Simulation.ControlStep)
+        {
+            if (Bot) Think((float)_decisionTime);
+            _decisionTime=0;
+        }
         Vector3 desired = Command.LimitLength() * Speed;
         Vector3 velocity = Velocity; velocity.Y = 0;
         Velocity = velocity.MoveToward(desired, Acceleration * dt);
         // MoveAndSlide verifică întregul traseu al translației, nu doar poziția finală.
-        MoveAndSlide();
+        var position=Position;
+        // Un robot oprit nu repetă sweep-ul; resetarea/teleportarea cere recuperare.
+        if (Velocity.LengthSquared()>0 || _needsRecovery || position!=_lastCollisionPosition)
+        { MoveAndSlide(); position=Position; _needsRecovery=false; }
         // Verificăm volumul orientat înainte de a accepta rotația.
         if (Mathf.Abs(TurnCommand) > .0001f)
         {
-            float previousYaw=Rotation.Y;
-            Rotation=new(0,previousYaw+TurnCommand*TurnSpeed*dt,0);
-            _rotationQuery.Transform=GlobalTransform*new Transform3D(Basis.Identity,new Vector3(0,.15f,0));
-            if (GetWorld3D().DirectSpaceState.IntersectShape(_rotationQuery,1).Count>0) Rotation=new(0,previousYaw,0);
+            float angle=TurnCommand*TurnSpeed*dt;
+            var candidate=GlobalTransform;
+            candidate.Basis=candidate.Basis.Rotated(Vector3.Up,angle);
+            candidate.Origin+=Vector3.Up*.15f;
+            _rotationQuery.Transform=candidate;
+            // Verificăm candidatul înainte de a modifica corpul și toate mesh-urile.
+            if (GetWorld3D().DirectSpaceState.IntersectShape(_rotationQuery,1).Count==0)
+                RotateY(angle);
         }
-        Position = new(Position.X, 0, Position.Z);
+        if (position.Y!=0) { position.Y=0; Position=position; }
+        _lastCollisionPosition=position;
+        _intakeTime+=delta;
+        if (_intakeTime+1e-9>=Simulation.ControlStep)
+        {
+            _intakeTime=System.Math.Max(0,_intakeTime-Simulation.ControlStep);
+            Collect();
+        }
+        if (FireCommand) Fire();
+    }
+    public override void _Process(double delta)
+    {
+        if (!Game.Running) return;
+        var local = GlobalBasis.Inverse() * Velocity;
         foreach (var module in _modules)
         {
-            var local = GlobalBasis.Inverse() * Velocity;
-            local += new Vector3(TurnCommand * module.Position.Z, 0, -TurnCommand * module.Position.X);
-            if (local.LengthSquared() > .01f) module.Rotation = new(0, Mathf.Atan2(-local.X, -local.Z), 0);
+            var wheelVelocity=local+new Vector3(TurnCommand*module.Position.Z,0,-TurnCommand*module.Position.X);
+            if (wheelVelocity.LengthSquared()>.01f) module.Rotation=new(0,Mathf.Atan2(-wheelVelocity.X,-wheelVelocity.Z),0);
         }
-        var target = Game.Target(this);
+        AimTurrets();
+    }
+    private void AimTurrets()
+    {
+        var target=Game.Target(this);
         foreach (var turret in _turrets)
-            if ((target - turret.GlobalPosition).LengthSquared() > .01f) turret.LookAt(new(target.X, turret.GlobalPosition.Y, target.Z));
+            if ((target-turret.GlobalPosition).LengthSquared()>.01f) turret.LookAt(new(target.X,turret.GlobalPosition.Y,target.Z));
+    }
+    private void Collect()
+    {
         if (Intake && Inventory.Count < Capacity)
         {
             foreach (var flower in Game.Flowers)
@@ -126,11 +160,11 @@ public partial class RobotAgent : CharacterBody3D
                 { Inventory.Add(ball.Kind); Game.RemoveBall(ball); break; }
             }
         }
-        if (FireCommand) Fire();
     }
     public void Fire()
     {
         if (!Game.DrivingAllowed || Cooldown > 0 || Inventory.Count == 0) return;
+        AimTurrets();
         var origin = LaunchOrigin;
         var target = Game.Target(this);
         float radius = Inventory[0] == PieceKind.Pollen ? .03556f : .04572f;
@@ -149,26 +183,30 @@ public partial class RobotAgent : CharacterBody3D
     private void Think(float dt)
     {
         Intake = true; FireCommand = false;
-        Vector3 goal = GlobalPosition;
+        Vector3 current=GlobalPosition, goal=current;
         if (Inventory.Count > 0)
         {
             goal = new(Red ? .8f : Arena.Size - .8f, 0, Number % 2 == 1 ? -.8f : -Arena.Size + .8f);
-            FireCommand = GlobalPosition.DistanceTo(goal) < .18f;
+            FireCommand = current.DistanceTo(goal) < .18f;
         }
         else
         {
             float best = float.MaxValue;
             foreach (var ball in Game.Balls)
-                if (!ball.Stored && ball.Position.Y < .15f && ball.Position.DistanceSquaredTo(GlobalPosition) < best)
-                { best = ball.Position.DistanceSquaredTo(GlobalPosition); goal = ball.Position; }
+            {
+                if (ball.Stored) continue;
+                var position=ball.Position;
+                float distance=position.DistanceSquaredTo(current);
+                if (position.Y<.15f && distance<best) { best=distance; goal=position; }
+            }
         }
-        Vector3 move = goal - GlobalPosition; move.Y = 0;
-        _botStuck = GlobalPosition.DistanceTo(_previous) < .12f*dt && move.Length() > .15f ? _botStuck + dt : 0;
+        Vector3 move = goal - current; move.Y = 0;
+        _botStuck = current.DistanceTo(_previous) < .12f*dt && move.Length() > .15f ? _botStuck + dt : 0;
         if (_botStuck > .5f) { _botAvoid = 1.2f; _botStuck = 0; }
         if (_botAvoid > 0) { _botAvoid -= dt; move = move.Rotated(Vector3.Up, Mathf.Pi / 2); }
         Command = move.Length() < .1f ? Vector3.Zero : move.Normalized();
         float heading = Mathf.Atan2(-move.X, -move.Z);
         TurnCommand = Mathf.Clamp(Mathf.AngleDifference(Rotation.Y, heading) * 2, -1, 1);
-        _previous = GlobalPosition;
+        _previous = current;
     }
 }

@@ -20,4 +20,7 @@ Use `--audit-test` for menu, creator, snapshot, path and match-state regressions
 Use `--gravity-test` for measured gravity/ballistics and `--contact-test` for
 ball impacts, near misses, rolling, spin and flower-stack settling. Contact
 parameters remain estimates requiring calibration against physical balls.
+Use `--fps-test` with a rendered window for rest, driving and four-bot timing;
+it disables VSync only in the benchmark process. Gameplay observations run at
+120 Hz while physics retains 1920 Hz.
 Backups, personal explanations, research downloads and build caches are excluded.

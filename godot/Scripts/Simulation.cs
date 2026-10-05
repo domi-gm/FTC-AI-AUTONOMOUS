@@ -6,6 +6,7 @@ using System.Text.Json;
 
 public partial class Simulation : Node3D
 {
+    public const double ControlStep=1.0/120;
     public readonly List<GamePiece> Balls = new();
     public readonly List<RobotAgent> Robots = new();
     public Hive RedHive, BlueHive;
@@ -19,6 +20,8 @@ public partial class Simulation : Node3D
     public bool Running => Started && !Paused && !Finished;
     public bool DrivingAllowed => Running && (Practice || Elapsed<30 || Elapsed>=38);
     private double _elapsed;
+    private double _observationTime;
+    private bool _wasTransition;
     public float Elapsed { get => (float)_elapsed; set => _elapsed=value; }
     public int RedScore, BlueScore;
     public string Status = "Godot C# / local prototype";
@@ -47,11 +50,13 @@ public partial class Simulation : Node3D
         if (OS.GetCmdlineUserArgs().Contains("--audit-test")) CallDeferred(MethodName.AuditTest);
         if (OS.GetCmdlineUserArgs().Contains("--gravity-test")) CallDeferred(MethodName.GravityTest);
         if (OS.GetCmdlineUserArgs().Contains("--contact-test")) CallDeferred(MethodName.ContactTest);
+        if (OS.GetCmdlineUserArgs().Contains("--fps-test")) CallDeferred(MethodName.FpsTest);
     }
     public void Reset(bool start = true)
     {
         if (_session != null) { RemoveChild(_session); _session.QueueFree(); }
         Balls.Clear(); Robots.Clear(); _pausedVelocities.Clear(); Elapsed = 0; Paused = false; Started = start;
+        _observationTime=0; _wasTransition=false;
         if (PathEditor != null) PathEditor.Following = false;
         Flowers.Clear(); HumanStock[0].Clear(); HumanStock[1].Clear();
         HumanTokens[0] = HumanTokens[1] = _redLastTips = _blueLastTips = 0;
@@ -139,17 +144,25 @@ public partial class Simulation : Node3D
         _elapsed += delta;
         if (Finished) { Elapsed=158; UpdateScore(); SetFrozen(true); Hud.ShowResults(); return; }
         bool transition = !Practice && Elapsed >= 30 && Elapsed < 38;
-        foreach (var robot in Robots)
+        if (transition!=_wasTransition)
         {
-            robot.SetPhysicsProcess(!transition);
-            if (transition) { robot.Velocity=Vector3.Zero; robot.Command=Vector3.Zero; robot.TurnCommand=0; robot.Intake=robot.FireCommand=false; }
+            foreach (var robot in Robots)
+            {
+                robot.SetPhysicsProcess(!transition);
+                if (transition) { robot.Velocity=Vector3.Zero; robot.Command=Vector3.Zero; robot.TurnCommand=0; robot.Intake=robot.FireCommand=false; }
+            }
+            _wasTransition=transition;
         }
+        // Observațiile de joc la 120 Hz; Jolt și deplasarea rămân la fiecare pas.
+        _observationTime+=delta;
+        if (_observationTime+1e-9<ControlStep) return;
+        _observationTime=Math.Max(0,_observationTime-ControlStep);
         if (!transition)
         {
             if (!Testing) { ReadPlayer(Player, false); if (TwoPlayers) ReadPlayer(Robots[2], true); }
         }
         foreach (var flower in Flowers) flower.Update();
-        foreach (var ball in Balls.ToArray())
+        foreach (var ball in Balls)
         {
             if (ball.Stored) continue;
             if (ball.Position.Y < -1 || Mathf.Abs(ball.Position.X) > 20 || Mathf.Abs(ball.Position.Z) > 20)
@@ -393,6 +406,7 @@ public partial class Simulation : Node3D
     public async void AuditTest() => await SimulatorRegressionChecks.Run(this);
     public async void GravityTest() => await SimulatorRegressionChecks.RunGravity(this);
     public async void ContactTest() => await PieceContactChecks.Run(this);
+    public async void FpsTest() => await SimulatorPerformanceChecks.Run(this);
     public async void RenderedPreviewTest()
     {
         try
@@ -400,6 +414,8 @@ public partial class Simulation : Node3D
             if (DisplayServer.GetName()=="headless") throw new Exception("This check requires a rendered window");
             Testing=true; Practice=true; Reset(); foreach (var r in Robots) r.Bot=false;
             Hud.ShowPause(false); Player.Command=Vector3.Right;
+            for (int i=0;i<30;i++)
+                await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
             float originError=0, targetError=0;
             var watch=System.Diagnostics.Stopwatch.StartNew();
             for (int i=0;i<120;i++)
@@ -407,7 +423,6 @@ public partial class Simulation : Node3D
                 await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
                 originError=Mathf.Max(originError,Aim.DisplayOrigin.DistanceTo(Player.LaunchOrigin));
                 targetError=Mathf.Max(targetError,Aim.DisplayEnd.DistanceTo(Target(Player)));
-                await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
             }
             watch.Stop();
             GD.Print($"PREVIEW rendered: {120/watch.Elapsed.TotalSeconds:0.0} FPS; origin lag {originError*100:0.000} cm; target lag {targetError*100:0.000} cm; {Aim.PlanUpdates} collision refreshes");

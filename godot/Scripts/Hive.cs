@@ -17,6 +17,7 @@ public partial class Hive : Node3D
     private const float FrictionTorque = 171f * .45359237f * .0254f * .0254f;
     private const float Damper = 6834f * .45359237f * .0254f * .0254f;
     private int _upSide;
+    private double _loadTime;
     public readonly List<GamePiece>[] Contents = { new(), new() };
     public Vector3 Mouth(int side) => ToGlobal(new Vector3(0, .105f, side * .48f));
     public int UpSide => _upSide;
@@ -85,17 +86,23 @@ public partial class Hive : Node3D
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
-        foreach (var bucket in Contents)
-            bucket.RemoveAll(ball => !GodotObject.IsInstanceValid(ball) || !Inside(ball));
-        LoadTorque = 0;
-        for (int bucket = 0; bucket < 2; bucket++)
-            for (int i = 0; i < Contents[bucket].Count; i++)
+        _loadTime+=delta;
+        if (_loadTime+1e-9>=Simulation.ControlStep)
+        {
+            _loadTime=System.Math.Max(0,_loadTime-Simulation.ControlStep);
+            foreach (var bucket in Contents)
+                bucket.RemoveAll(ball => !GodotObject.IsInstanceValid(ball) || !Inside(ball));
+            LoadTorque = 0;
+            float cosine=Mathf.Cos(Angle), sine=Mathf.Sin(Angle);
+            foreach (var bucket in Contents) foreach (var ball in bucket)
             {
-                var local = ToLocal(Contents[bucket][i].GlobalPosition);
+                var local = ToLocal(ball.GlobalPosition);
                 // Brațul greutății față de ax: poziția Z după rotație.
-                float lever = local.Z * Mathf.Cos(Angle) + local.Y * Mathf.Sin(Angle);
-                LoadTorque += Contents[bucket][i].Mass * 9.81f * lever;
+                float lever = local.Z * cosine + local.Y * sine;
+                LoadTorque += ball.Mass * 9.81f * lever;
             }
+        }
+        float previousAngle=Angle;
         float torque = BodyMass * 9.81f * CenterOfMassHeight * Mathf.Sin(Angle) + LoadTorque;
         float damperStart = 24 * Mathf.Pi / 180;
         if (Mathf.Abs(Angle) > damperStart && Mathf.Sign(AngularVelocity) == Mathf.Sign(Angle))
@@ -106,7 +113,8 @@ public partial class Hive : Node3D
         Angle += AngularVelocity * dt;
         if (Angle > RestAngle) { Angle = RestAngle; if (AngularVelocity > 0) AngularVelocity *= -.05f; }
         if (Angle < -RestAngle) { Angle = -RestAngle; if (AngularVelocity < 0) AngularVelocity *= -.05f; }
-        Rotation = new(Angle, 0, 0);
+        // Nu invalidăm transformările tuturor panourilor când unghiul e identic.
+        if (Angle!=previousAngle) Rotation = new(Angle, 0, 0);
         int nextSide = Angle >= RestAngle - .00872665f ? -1 : Angle <= -RestAngle + .00872665f ? 1 : 0;
         if (nextSide != 0 && nextSide != _upSide)
         {

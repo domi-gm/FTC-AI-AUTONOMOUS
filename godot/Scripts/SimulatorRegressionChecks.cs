@@ -138,6 +138,19 @@ public static class SimulatorRegressionChecks
             Check(!game.PathEditor.Following && game.Status.Contains("blocked") && game.Player.Position.X<1.1f,
                 "Follower stops and explains a physical obstruction");
             game.PathEditor.ReplacePoints(Array.Empty<float[]>());
+            Reset(); await Frames(3);
+            game.Player.Position=new(game.Player.Width/2-.01f,0,-.8f);
+            game.Player.Velocity=Vector3.Zero; game.Player.Command=Vector3.Zero;
+            await Frames(3);
+            Check(game.Player.Position.X>=game.Player.Width/2-.001f,
+                "Stationary robot still recovers wall penetration after teleporting");
+            game.Player.Position=new(game.Player.Width/2+.008f,0,-.8f);
+            game.Player.Rotation=Vector3.Zero; game.Player.TurnCommand=1;
+            await Frames(60);
+            float support=game.Player.Width/2*Mathf.Abs(Mathf.Cos(game.Player.Rotation.Y))
+                +game.Player.Length/2*Mathf.Abs(Mathf.Sin(game.Player.Rotation.Y));
+            Check(game.Player.Position.X-support>-.004f && Mathf.Abs(game.Player.Rotation.Y)<.2f,
+                "Rotation candidates are blocked before the chassis turns through a wall");
             Reset(false); await Frames(3);
             game.Elapsed=30-.5f/Engine.PhysicsTicksPerSecond; game.Player.Velocity=Vector3.Right; game.Player.Command=Vector3.Right;
             game.Player.FireCommand=true;
