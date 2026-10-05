@@ -23,4 +23,6 @@ parameters remain estimates requiring calibration against physical balls.
 Use `--fps-test` with a rendered window for rest, driving and four-bot timing;
 it disables VSync only in the benchmark process. Gameplay observations run at
 120 Hz while physics retains 1920 Hz.
+Use `--shot-test` for live readiness, shot diagnostics, narrow HIVE approaches
+and multi-launcher refreshes. Turret alignment is separate from path clearance.
 Backups, personal explanations, research downloads and build caches are excluded.

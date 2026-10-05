@@ -29,7 +29,7 @@ public partial class SimulatorHud : CanvasLayer
         _root.AddChild(_score);
         _red = ScoreLabel(VisualFactory.Red); _clock = ScoreLabel(Colors.White); _blue = ScoreLabel(VisualFactory.Blue);
         _score.AddChild(_red); _score.AddChild(_clock); _score.AddChild(_blue);
-        _telemetry = new Label { OffsetLeft = 24, OffsetTop = -128, OffsetRight = 560, OffsetBottom = -24, AnchorTop = 1, AnchorBottom = 1 };
+        _telemetry = new Label { OffsetLeft = 24, OffsetTop = -128, OffsetRight = 560, OffsetBottom = -24, AnchorTop = 1, AnchorBottom = 1, MouseFilter=Control.MouseFilterEnum.Pass };
         _root.AddChild(_telemetry);
         var telemetryPanel=new RobotTelemetryPanel { Game=Game, OffsetLeft=24, OffsetTop=88,
             OffsetRight=328, OffsetBottom=496 };
@@ -157,6 +157,7 @@ public partial class SimulatorHud : CanvasLayer
         _clock.AddThemeFontSizeOverride("font_size", 22);
         var p = Game.Player.Position;
         _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot";
+        _telemetry.TooltipText=$"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}";
         _status.Text = Game.Status; _status.TooltipText=Game.Status;
     }
 }

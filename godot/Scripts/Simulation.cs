@@ -51,6 +51,7 @@ public partial class Simulation : Node3D
         if (OS.GetCmdlineUserArgs().Contains("--gravity-test")) CallDeferred(MethodName.GravityTest);
         if (OS.GetCmdlineUserArgs().Contains("--contact-test")) CallDeferred(MethodName.ContactTest);
         if (OS.GetCmdlineUserArgs().Contains("--fps-test")) CallDeferred(MethodName.FpsTest);
+        if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.ShotTest);
     }
     public void Reset(bool start = true)
     {
@@ -407,6 +408,7 @@ public partial class Simulation : Node3D
     public async void GravityTest() => await SimulatorRegressionChecks.RunGravity(this);
     public async void ContactTest() => await PieceContactChecks.Run(this);
     public async void FpsTest() => await SimulatorPerformanceChecks.Run(this);
+    public async void ShotTest() => await ShotPlanningChecks.Run(this);
     public async void RenderedPreviewTest()
     {
         try

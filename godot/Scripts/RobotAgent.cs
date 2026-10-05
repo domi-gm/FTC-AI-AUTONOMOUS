@@ -20,6 +20,8 @@ public partial class RobotAgent : CharacterBody3D
     public bool FireCommand;
     public float Cooldown;
     public string ShotStatus = "READY";
+    public string LastShotAttempt = "NONE";
+    public ShotPlanner.Diagnosis LastShotDiagnosis;
     public int ShotsFired, ShotsMade;
     public Node3D Turret;
     public Vector3 LaunchOrigin => _turrets[Inventory.Count % _turrets.Count].GlobalPosition + Vector3.Up * .06f;
@@ -163,22 +165,31 @@ public partial class RobotAgent : CharacterBody3D
     }
     public void Fire()
     {
-        if (!Game.DrivingAllowed || Cooldown > 0 || Inventory.Count == 0) return;
+        if (Inventory.Count==0) { ShotStatus="NO PIECE IN ROBOT"; return; }
+        if (!Game.DrivingAllowed || Cooldown > 0) return;
         AimTurrets();
         var origin = LaunchOrigin;
         var target = Game.Target(this);
         float radius = Inventory[0] == PieceKind.Pollen ? .03556f : .04572f;
-        if (!ShotPlanner.TryPlan(this, origin, target, radius, out Vector3 launch))
+        bool clear=ShotPlanner.TrySolve(this,origin,target,radius,out var plan,out var diagnosis);
+        LastShotDiagnosis=diagnosis;
+        if (!clear)
         {
-            ShotStatus = "BLOCKED / NO TRAJECTORY";
+            ShotStatus = LastShotAttempt=diagnosis.Message;
             // Nu consumăm inventarul; încercăm din nou după o scurtă pauză.
             Cooldown = .15f; return;
         }
-        ShotStatus = "LAUNCHED";
+        ShotStatus = LastShotAttempt="LAUNCHED";
         var ball = Game.SpawnBall(Inventory[0], origin); Inventory.RemoveAt(0);
         ball.ShotRobotIndex=Game.Robots.IndexOf(this); ShotsFired++;
-        ball.LinearVelocity = launch;
+        ball.LinearVelocity = plan.Velocity;
         Cooldown = .45f / TurretCount;
+    }
+    public void UpdateShotReadiness(bool clear, ShotPlanner.Diagnosis diagnosis)
+    {
+        if(Inventory.Count==0) { ShotStatus="NO PIECE IN ROBOT"; return; }
+        if(Cooldown>0 && ShotStatus=="LAUNCHED") return;
+        ShotStatus=clear ? "READY" : diagnosis.Message;
     }
     private void Think(float dt)
     {

@@ -69,7 +69,7 @@ public partial class RobotTelemetryPanel : Control
         DrawLine(center,center+new Vector2(Mathf.Sin(error),-Mathf.Cos(error))*16,green,3,true);
         DrawCircle(center,3,white);
         Text($"{(Game.AimFlower ? "FLOWER" : "HIVE")}  /  TURRET TO TARGET",68,193,muted,10);
-        Text(Mathf.Abs(error)<.05f ? "ON TARGET" : $"ERROR {Mathf.RadToDeg(error):0.0}°",68,213,Mathf.Abs(error)<.05f ? green : red,14);
+        Text(Mathf.Abs(error)<.05f ? "TURRET ALIGNED" : $"ERROR {Mathf.RadToDeg(error):0.0}°",68,213,Mathf.Abs(error)<.05f ? green : red,14);
         Text($"LAUNCH SPEED      {Game.Aim.Speed/.0254f:0} IN/S",14,242,white,11);
         Text($"FLIGHT TIME       {Game.Aim.FlightTime:0.00} S",14,258,muted,11);
         Rect2 graph=new(14,270,276,54); DrawRect(graph,new("1b2430"));

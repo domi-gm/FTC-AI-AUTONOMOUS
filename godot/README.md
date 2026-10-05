@@ -103,3 +103,26 @@ At 1280x800 on the tested RTX 3060, baseline/final were ~113/329 FPS at rest,
 ~97/189 while driving and ~39/86 with four bots. These are short-scenario results,
 not guaranteed frame rates; bots still had p99 frames around 40 ms. Audit coverage
 includes stationary recovery and blocking rotation at the perimeter wall.
+
+## Shot readiness and narrow approaches
+
+SHOT now reflects current 20 Hz aim validation rather than retaining a previous
+blocked attempt. LastShotAttempt and LastShotDiagnosis preserve attempt history
+for the bottom telemetry tooltip. TURRET ALIGNED means orientation only; use
+the separate POLLEN/NECTAR CLEAR PATH badges for ballistic clearance. Empty
+inventory, launch-point overlap, target overlap, speed limits and path obstacles
+have distinct diagnostics. Inventory-count changes refresh the selected launcher
+even when the next ball has the same type.
+
+After the original 51 flight-time samples at 25 ms spacing fail, the planner
+refines up to 16 promising intervals at 5 ms spacing (64 extra candidates).
+Sphere sweeps, endpoint overlaps and safety margins remain active. A standard
+robot at field (160,250) cm can now launch pollen on the previously missed
+0.530 s approach into the red HIVE; this is checked with a physical landing.
+The finite search can still miss narrower windows and does not predict moving
+obstacles. Live aim may lag movement by about 50 ms; firing always revalidates.
+
+Godot --headless --path . -- --shot-test runs 11 checks for readiness, inventory,
+diagnostics, refined physical scoring and multi-launcher changes. The tested
+uncapped benchmark measured ~214 FPS driving and ~95 with four bots, with p99
+bot frames around 59 ms; refinement adds cost to blocked attempts.
