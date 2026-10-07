@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<robot name="URDF automatic joints demo">
+  <link name="world_frame" />
+  <link name="base_link">
+    <inertial><mass value="5" /></inertial>
+    <visual><geometry><mesh filename="package://urdf-demo/meshes/chassis.stl" scale="0.001 0.001 0.001" /></geometry></visual>
+  </link>
+  <joint name="base_mount" type="fixed"><parent link="world_frame" /><child link="base_link" /></joint>
+  <link name="arm">
+    <inertial><mass value="0.1" /></inertial>
+    <visual><origin xyz="-0.2 -0.15 -0.165" /><geometry><mesh filename="package://urdf-demo/meshes/arm.stl" scale="0.001 0.001 0.001" /></geometry></visual>
+  </link>
+  <joint name="shoulder" type="revolute">
+    <parent link="base_link" /><child link="arm" />
+    <origin xyz="0.2 0.15 0.165" rpy="0 0 0.4" /><axis xyz="0 1 0" />
+    <limit lower="0.2" upper="0.7" effort="2" velocity="1" />
+  </joint>
+  <link name="slider">
+    <inertial><mass value="0.1" /></inertial>
+    <visual><origin xyz="-0.1 -0.15 -0.1" /><geometry><mesh filename="../meshes/slider.stl" scale="0.001 0.001 0.001" /></geometry></visual>
+  </link>
+  <joint name="lift" type="prismatic">
+    <parent link="base_link" /><child link="slider" /><origin xyz="0.1 0.15 0.1" /><axis xyz="0 0 1" />
+    <limit lower="0" upper="0.12" effort="20" velocity="0.1" />
+  </joint>
+  <link name="tool">
+    <inertial><mass value="0.1" /></inertial>
+    <visual><origin xyz="-0.1 -0.15 -0.2" /><geometry><mesh filename="../meshes/tool.stl" scale="0.001 0.001 0.001" /></geometry></visual>
+  </link>
+  <joint name="tool_mount" type="fixed"><parent link="slider" /><child link="tool" /><origin xyz="0 0 0.1" /></joint>
+</robot>

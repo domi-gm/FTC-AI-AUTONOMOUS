@@ -9,6 +9,24 @@ public partial class GamePiece : RigidBody3D
     public bool ShotConfirmed;
     public float Radius => Kind == PieceKind.Pollen ? .03556f : .04572f;
     private static Shader _shader;
+    private readonly System.Collections.Generic.List<PhysicsBody3D> _launchExceptions = new();
+    private float _launchGrace;
+    public void IgnoreLauncherBriefly(RobotAgent robot)
+    {
+        _launchGrace=.2f;
+        _launchExceptions.Add(robot); AddCollisionExceptionWith(robot);
+        if (robot.Rig != null) foreach (var link in robot.Rig.Links.Values)
+        { _launchExceptions.Add(link); AddCollisionExceptionWith(link); }
+    }
+    public override void _PhysicsProcess(double delta)
+    {
+        if (_launchExceptions.Count==0 || Freeze) return;
+        _launchGrace-=(float)delta;
+        if (_launchGrace>0) return;
+        foreach (var body in _launchExceptions)
+            if (GodotObject.IsInstanceValid(body)) RemoveCollisionExceptionWith(body);
+        _launchExceptions.Clear();
+    }
     public override void _Ready()
     {
         // La referință masele sunt în livre; Godot folosește kg.

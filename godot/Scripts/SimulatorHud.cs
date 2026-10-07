@@ -50,6 +50,7 @@ public partial class SimulatorHud : CanvasLayer
         _menu.AddChild(scroll);
         _content = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _content.AddThemeConstantOverride("separation", 8); scroll.AddChild(_content);
+        CreateJointControls();
     }
     private Label ScoreLabel(Color color)
     {
@@ -75,6 +76,7 @@ public partial class SimulatorHud : CanvasLayer
         Button(_content, "PLAY MATCH", () => Start(false));
         Button(_content, "PRACTICE", () => Start(true));
         Button(_content, "ROBOT CREATOR", RobotSetup);
+        Button(_content, "IMPORT ROBOT (STL / URDF)", ImportSetup);
         Button(_content, "TWO PLAYERS: " + (Game.TwoPlayers ? "ON" : "OFF"), () => { Game.TwoPlayers = !Game.TwoPlayers; ShowMenu(); });
         Button(_content, "SETTINGS", Settings);
         Button(_content, "HOW TO PLAY", Help);
@@ -134,8 +136,12 @@ public partial class SimulatorHud : CanvasLayer
     {
         _draft ??=Game.Profile.Copy();
         Clear("ROBOT CREATOR", "Local profile • Apply restarts the scene");
-        Slider("Width (cm)", 25, 45.72, _draft.WidthCm, v => _draft.WidthCm = (float)v);
-        Slider("Length (cm)", 25, 45.72, _draft.LengthCm, v => _draft.LengthCm = (float)v);
+        if (_draft.Imported == null)
+        {
+            Slider("Width (cm)", 25, 45.72, _draft.WidthCm, v => _draft.WidthCm = (float)v);
+            Slider("Length (cm)", 25, 45.72, _draft.LengthCm, v => _draft.LengthCm = (float)v);
+        }
+        Button(_content, _draft.Imported == null ? "IMPORT FUSION / STL ROBOT" : "EDIT IMPORTED STL ROBOT", ImportSetup);
         Slider("Speed (m/s)", .3, 3, _draft.Speed, v => _draft.Speed = (float)v);
         Slider("Acceleration (m/s²)", .5, 8, _draft.Acceleration, v => _draft.Acceleration = (float)v);
         Slider("Turn speed (rad/s)", .5, 6, _draft.TurnSpeed, v => _draft.TurnSpeed = (float)v);
@@ -150,13 +156,14 @@ public partial class SimulatorHud : CanvasLayer
     public override void _Process(double delta)
     {
         if (Game.Player == null) return;
+        UpdateJointControls();
         _red.Text = $"RED  {Game.RedScore}"; _blue.Text = $"{Game.BlueScore}  BLUE";
         string phase = Game.Practice ? "PRACTICE" : Game.Elapsed < 30 ? "AUTO" : Game.Elapsed < 38 ? "TRANSITION" : Game.Elapsed < 158 ? "TELEOP" : "FINAL";
         float time = Game.Practice ? Game.Elapsed : Game.Elapsed < 30 ? 30 - Game.Elapsed : Game.Elapsed < 38 ? 38 - Game.Elapsed : Mathf.Max(0, 158 - Game.Elapsed);
         _clock.Text = $"{(int)time / 60}:{(int)time % 60:00}  {phase}";
         _clock.AddThemeFontSizeOverride("font_size", 22);
         var p = Game.Player.Position;
-        _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot";
+        _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot" + (Game.Player.Rig == null ? "" : "\n" + Game.Player.Rig.MotorStatus);
         _status.Text = Game.Status; _status.TooltipText=Game.Status;
     }
 }

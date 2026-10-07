@@ -29,6 +29,11 @@ public static class ShotPlanner
             Shape = sphere, CollisionMask = 1 | 4,
             Exclude = new Godot.Collections.Array<Rid> { robot.GetRid() }, Margin = .001f
         };
+        // The existing launcher ignores its own chassis; include its articulated links too.
+        var excluded = new Godot.Collections.Array<Rid> { robot.GetRid() };
+        if (robot.Rig != null)
+            foreach (var body in robot.Rig.Links.Values) excluded.Add(body.GetRid());
+        query.Exclude = excluded;
         var space = robot.GetWorld3D().DirectSpaceState;
         query.Transform = new Transform3D(Basis.Identity, origin);
         if (space.IntersectShape(query, 1).Count > 0) return false;

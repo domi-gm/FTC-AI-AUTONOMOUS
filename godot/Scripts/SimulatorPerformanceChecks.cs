@@ -12,6 +12,8 @@ public static class SimulatorPerformanceChecks
         try
         {
             if (DisplayServer.GetName()=="headless") throw new Exception("--fps-test requires a rendered window");
+            // Diagnostic override for comparison; does not change project settings.
+            if (Array.IndexOf(OS.GetCmdlineUserArgs(),"--fps-120")>=0) Engine.PhysicsTicksPerSecond=120;
             DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
             Engine.MaxFps=0;
             game.Testing=true; game.Practice=true;
