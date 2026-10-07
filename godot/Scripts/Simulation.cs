@@ -15,14 +15,14 @@ public partial class Simulation : Node3D
     public SimulatorHud Hud;
     public PracticePath PathEditor;
     public AimPreview Aim;
-    public bool Started, Paused, Practice = true, TwoPlayers;
-    public bool Finished => !Practice && Elapsed>=158;
+    public bool Started, Paused, Practice = true, TwoPlayers, AutonomousDrill;
+    public bool Finished => !Practice && _elapsed >= (AutonomousDrill ? 30 : 158);
     public bool Running => Started && !Paused && !Finished;
-    public bool DrivingAllowed => Running && (Practice || Elapsed<30 || Elapsed>=38);
+    public bool DrivingAllowed => Running && (Practice || Elapsed < 30 || Elapsed >= 38);
     private double _elapsed;
     private double _observationTime;
     private bool _wasTransition;
-    public float Elapsed { get => (float)_elapsed; set => _elapsed=value; }
+    public float Elapsed { get => (float)_elapsed; set => _elapsed = value; }
     public int RedScore, BlueScore;
     public string Status = "Godot C# / local prototype";
     public bool AimFlower;
@@ -141,23 +141,34 @@ public partial class Simulation : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (!Running) return;
-        // Acumulăm în double pentru ca pașii mici să nu deriveze cronometrul.
         _elapsed += delta;
-        if (Finished) { Elapsed=158; UpdateScore(); SetFrozen(true); Hud.ShowResults(); return; }
-        bool transition = !Practice && Elapsed >= 30 && Elapsed < 38;
-        if (transition!=_wasTransition)
+        if (!Practice && _elapsed >= (AutonomousDrill ? 30 : 158))
+        {
+            _elapsed = AutonomousDrill ? 30 : 158;
+            UpdateScore();
+            SetFrozen(true);
+            Hud.ShowResults();
+            return;
+        }
+        bool transition = !Practice && !AutonomousDrill && Elapsed >= 30 && Elapsed < 38;
+        if (transition != _wasTransition)
         {
             foreach (var robot in Robots)
             {
                 robot.SetPhysicsProcess(!transition);
-                if (transition) { robot.Velocity=Vector3.Zero; robot.Command=Vector3.Zero; robot.TurnCommand=0; robot.Intake=robot.FireCommand=false; }
+                if (transition)
+                {
+                    robot.Velocity = Vector3.Zero;
+                    robot.Command = Vector3.Zero;
+                    robot.TurnCommand = 0;
+                    robot.Intake = robot.FireCommand = false;
+                }
             }
-            _wasTransition=transition;
+            _wasTransition = transition;
         }
-        // Observațiile de joc la 120 Hz; Jolt și deplasarea rămân la fiecare pas.
-        _observationTime+=delta;
-        if (_observationTime+1e-9<ControlStep) return;
-        _observationTime=Math.Max(0,_observationTime-ControlStep);
+        _observationTime += delta;
+        if (_observationTime + 1e-9 < ControlStep) return;
+        _observationTime = Math.Max(0, _observationTime - ControlStep);
         if (!transition)
         {
             if (!Testing) { ReadPlayer(Player, false); if (TwoPlayers) ReadPlayer(Robots[2], true); }
@@ -182,7 +193,17 @@ public partial class Simulation : Node3D
     }
     private void ReadPlayer(RobotAgent robot, bool second)
     {
-        if (!Practice && Elapsed < 30) { robot.Bot = true; return; }
+        if (!Practice && Elapsed < 30)
+        {
+            if (!second && PathEditor != null && PathEditor.Following)
+            {
+                robot.Bot = false;
+                robot.Command = PathEditor.Command();
+                return;
+            }
+            robot.Bot = true;
+            return;
+        }
         robot.Bot = false;
         bool Held(Key key) => Input.IsPhysicalKeyPressed(key);
         var v = second ? new Vector3((Held(Key.Right) ? 1 : 0) - (Held(Key.Left) ? 1 : 0), 0, (Held(Key.Down) ? 1 : 0) - (Held(Key.Up) ? 1 : 0))
@@ -452,6 +473,16 @@ public partial class Simulation : Node3D
             async System.Threading.Tasks.Task Frames(int n) { for (int i=0;i<Mathf.CeilToInt(n*Engine.PhysicsTicksPerSecond/120f);i++) await ToSignal(GetTree(),SceneTree.SignalName.PhysicsFrame); }
             int Count() => Balls.Count + Robots.Sum(r => r.Inventory.Count);
             Testing = true; Practice = true; Reset(); foreach (var r in Robots) r.Bot = false;
+            Hud.ShowMenu();
+            Hud.NavigateTo(SimulatorHud.ScreenType.RobotCreator);
+            Hud.NavigateTo(SimulatorHud.ScreenType.AutonomousPathing);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Settings);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Help);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Pause);
+            Hud.NavigateTo(SimulatorHud.ScreenType.Results);
+            Hud.GoBack();
+            Hud.CloseMenu();
+            Check(true, "All HUD menu screens navigate and render cleanly");
             var oldCameraTransform = Camera.GlobalTransform;
             var oldProjection = Camera.Projection;
             Vector3 center = Arena.World(Arena.Center, Arena.Center);

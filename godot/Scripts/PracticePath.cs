@@ -67,7 +67,15 @@ public partial class PracticePath : Node3D
         }
         Following=false; return Vector3.Zero;
     }
-    private void Rebuild()
+    public void ClearPath()
+    {
+        Points.Clear();
+        Following = false;
+        Current = 0;
+        Rebuild();
+        if (Game != null) Game.Status = "Path cleared";
+    }
+    public void Rebuild()
     {
         foreach (var n in GetChildren()) { RemoveChild(n); n.QueueFree(); }
         for (int i = 0; i < Points.Count; i++)
