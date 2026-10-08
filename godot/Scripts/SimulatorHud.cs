@@ -42,14 +42,10 @@ public partial class SimulatorHud : CanvasLayer
     private PanelContainer _scoreCard;
     private Label _redScoreLabel, _blueScoreLabel;
     private Label _phaseBadge, _clockLabel;
-    private PanelContainer _telemetryCard;
-    private Label _telemetryHeader, _telemetrySubsystems, _telemetryHints;
-    private HBoxContainer _inventorySlots;
     private PanelContainer _statusToast;
     private Label _statusToastLabel;
     private HBoxContainer _controlsBar;
     private Button _cameraQuickBtn, _targetQuickBtn;
-    private RobotTelemetryPanel _telemetryPanel;
     private string _rebindingAction;
 
     // Classic Theme Palette (Restored original aesthetic, scaled 1.5x)
@@ -211,62 +207,7 @@ public partial class SimulatorHud : CanvasLayer
         blueCol.AddChild(blueBadge);
         scoreLayout.AddChild(blueCol);
 
-        // 2. Robot Telemetry Panel (Left graph canvas)
-        _telemetryPanel = new RobotTelemetryPanel
-        {
-            Game = Game,
-            OffsetLeft = 24,
-            OffsetTop = 104,
-            OffsetRight = 328,
-            OffsetBottom = 512
-        };
-        _hudLayer.AddChild(_telemetryPanel);
-
-        // 3. Compact Robot Status Card (Bottom Left, 1.5x enlarged, 490px wide)
-        _telemetryCard = new PanelContainer
-        {
-            AnchorTop = 1f,
-            AnchorBottom = 1f,
-            OffsetLeft = 24,
-            OffsetRight = 490,
-            OffsetTop = -170,
-            OffsetBottom = -20,
-            MouseFilter = Control.MouseFilterEnum.Ignore
-        };
-        _telemetryCard.AddThemeStyleboxOverride("panel", CreateBox(DialogBg, Gold, 10, 1, 18, 12));
-        _hudLayer.AddChild(_telemetryCard);
-
-        var telemBox = new VBoxContainer();
-        telemBox.AddThemeConstantOverride("separation", 8);
-        _telemetryCard.AddChild(telemBox);
-
-        var topTelemRow = new HBoxContainer();
-        _telemetryHeader = new Label { Text = "R1  •  0.0, 0.0 cm", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        _telemetryHeader.AddThemeFontSizeOverride("font_size", 17);
-        _telemetryHeader.AddThemeColorOverride("font_color", TextWhite);
-        topTelemRow.AddChild(_telemetryHeader);
-
-        _inventorySlots = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
-        _inventorySlots.AddThemeConstantOverride("separation", 8);
-        for (int i = 0; i < 4; i++)
-        {
-            var dot = new ColorRect { CustomMinimumSize = new(16, 16), Color = new("292e39") };
-            _inventorySlots.AddChild(dot);
-        }
-        topTelemRow.AddChild(_inventorySlots);
-        telemBox.AddChild(topTelemRow);
-
-        _telemetrySubsystems = new Label { Text = "INTAKE: OFF   |   TARGET: HIVE   |   SHOT: READY" };
-        _telemetrySubsystems.AddThemeFontSizeOverride("font_size", 15);
-        _telemetrySubsystems.AddThemeColorOverride("font_color", TextMuted);
-        telemBox.AddChild(_telemetrySubsystems);
-
-        _telemetryHints = new Label { Text = "WASD Swerve  •  Q/E Turn  •  SHIFT Intake  •  SPACE Shoot" };
-        _telemetryHints.AddThemeFontSizeOverride("font_size", 14);
-        _telemetryHints.AddThemeColorOverride("font_color", TextDark);
-        telemBox.AddChild(_telemetryHints);
-
-        // 4. Quick Action Bar (Bottom Right, 1.5x enlarged)
+        // 2. Quick Action Bar (Bottom Right, 1.5x enlarged)
         _controlsBar = new HBoxContainer
         {
             AnchorLeft = 1f,
@@ -474,6 +415,7 @@ public partial class SimulatorHud : CanvasLayer
         _dialogSubtitle.Visible = !string.IsNullOrEmpty(subtitle);
         _modalScrim.Visible = true;
         _dialogPanel.Visible = true;
+        _dialogScroll.VerticalScrollMode = ScrollContainer.ScrollMode.Auto;
         _dialogScroll.ScrollVertical = 0;
     }
 
@@ -894,21 +836,44 @@ public partial class SimulatorHud : CanvasLayer
     {
         ClearDialog("BASIC ROBOT CHASSIS BUILDER", "Tune robot footprint, speeds, and subsystems with live 3D preview");
 
+        // Pin the dialog body height and disable outer scrolling so the preview stays pinned
+        _dialogScroll.VerticalScrollMode = ScrollContainer.ScrollMode.Disabled;
+        _dialogBody.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+
         _draft ??= Game.Profile.Copy();
         _draft.Imported = null;
         var profile = _draft;
 
-        var mainSplit = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var mainSplit = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
         mainSplit.AddThemeConstantOverride("separation", 16);
         _dialogBody.AddChild(mainSplit);
 
-        // LEFT COLUMN: Controls & Sliders
-        var leftCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new(480, 0) };
-        leftCol.AddThemeConstantOverride("separation", 14);
-        mainSplit.AddChild(leftCol);
+        // LEFT COLUMN: Scrollable container for settings & sliders
+        var leftScroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new(480, 0)
+        };
+        mainSplit.AddChild(leftScroll);
 
-        // RIGHT COLUMN: 3D Preview & Sizing Compliance
-        var rightCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new(400, 0) };
+        var leftCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        leftCol.AddThemeConstantOverride("separation", 14);
+        leftScroll.AddChild(leftCol);
+
+        // RIGHT COLUMN: Pinned 3D Preview & Sizing Compliance (Stationary)
+        var rightCol = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
+            CustomMinimumSize = new(400, 0)
+        };
         rightCol.AddThemeConstantOverride("separation", 14);
         mainSplit.AddChild(rightCol);
 
@@ -1113,8 +1078,8 @@ public partial class SimulatorHud : CanvasLayer
         AddPresetButton("Sniper Turret", () => ApplyPreset("Sniper Turret", 45.72f, 45.72f, 1.4f, 2.8f, 2.5f, 2, 1));
         AddPresetButton("Dual Harvester", () => ApplyPreset("Dual Intake", 42.0f, 42.0f, 1.6f, 3.2f, 3.0f, 1, 2));
 
-        // Bottom Actions
-        var actionsRow = new HBoxContainer();
+        // Bottom Actions (PINNED)
+        var actionsRow = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         actionsRow.AddThemeConstantOverride("separation", 14);
         _dialogBody.AddChild(actionsRow);
 
@@ -2057,12 +2022,8 @@ public partial class SimulatorHud : CanvasLayer
         UpdateJointControls();
 
         bool isMenuOpen = _currentScreen != ScreenType.None;
-        _telemetryPanel.Visible = Game.Started && !isMenuOpen;
-        _telemetryCard.Visible = Game.Started && !isMenuOpen;
         _controlsBar.Visible = !isMenuOpen;
         _statusToast.Visible = !isMenuOpen && !string.IsNullOrEmpty(Game.Status);
-
-        _telemetryCard.TooltipText = $"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}" + (Game.Player.Rig == null ? "" : "\n" + Game.Player.Rig.MotorStatus);
         _statusToast.TooltipText = Game.Status;
 
         _redScoreLabel.Text = Game.RedScore.ToString();
@@ -2118,27 +2079,6 @@ public partial class SimulatorHud : CanvasLayer
         _phaseBadge.Text = phaseName;
         _phaseBadge.AddThemeColorOverride("font_color", phaseColor);
         _clockLabel.Text = $"{(int)timeLeft / 60}:{(int)timeLeft % 60:00}";
-
-        var pos = Game.Player.Position;
-        _telemetryHeader.Text = $"ROBOT 1 ({(Game.Player.Red ? "RED" : "BLUE")})  •  X: {pos.X * 100:0.0} cm, Y: {-pos.Z * 100:0.0} cm";
-
-        var inv = Game.Player.Inventory;
-        for (int i = 0; i < 4; i++)
-        {
-            var dot = _inventorySlots.GetChild<ColorRect>(i);
-            if (i < inv.Count)
-            {
-                dot.Color = inv[i] == PieceKind.Pollen ? Gold : inv[i] == PieceKind.RedNectar ? Red : Blue;
-            }
-            else
-            {
-                dot.Color = new("292e39");
-            }
-        }
-
-        string intakeState = Game.Player.Intake ? "ACTIVE" : "OFF";
-        string targetState = Game.AimFlower ? "FLOWER" : "HIVE";
-        _telemetrySubsystems.Text = $"INTAKE: {intakeState}   |   TARGET: {targetState}   |   SHOT: {Game.Player.ShotStatus}";
 
         string[] camModes = { "ORBIT", "OVERHEAD", "CHASE" };
         _cameraQuickBtn.Text = $"CAM: {camModes[Game.Camera.Mode % 3]} [C]";
