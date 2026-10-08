@@ -2,7 +2,7 @@ using Godot;
 
 public static class VisualFactory
 {
-    public static readonly Color Red = new("e0453a"), Blue = new("3b7de0"), Gold = new("f2c230"), Steel = new("71818c");
+    public static readonly Color Red = new("e0453a"), Blue = new("3b7de0"), Gold = new("f2c230"), Steel = new("71818c"), Green = new("2ecc71");
     public static StandardMaterial3D Material(Color color, bool unshaded = false) => new()
     {
         AlbedoColor = color, Roughness = color == Steel ? .32f : .78f,

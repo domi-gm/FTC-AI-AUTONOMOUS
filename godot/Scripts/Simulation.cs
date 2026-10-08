@@ -62,6 +62,7 @@ public partial class Simulation : Node3D
     public string Status = "Godot C# / local prototype";
     public bool AimFlower;
     public RobotProfile Profile = RobotProfile.Load();
+    public RobotProfile AiProfile = new RobotProfile { Name = "AI Opponent Standard" };
     public bool Testing;
     private Node3D _session;
     private readonly Dictionary<GamePiece, (Vector3 Linear, Vector3 Angular)> _pausedVelocities = new();
@@ -119,7 +120,8 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         for (int i = 0; i < 4; i++)
         {
             var robot = new RobotAgent { Game = this, Red = i < 2, Number = i % 2 + 1, Bot = i > 0 && !(TwoPlayers && i == 2), Position = starts[i], Name = $"Robot{i + 1}" };
-            if (i == 0) { robot.Width = Profile.WidthCm / 100; robot.Length = Profile.LengthCm / 100; robot.Speed = Profile.Speed; robot.Acceleration = Profile.Acceleration; robot.TurnSpeed = Profile.TurnSpeed; robot.TurretCount = Profile.Turrets; robot.IntakeCount = Profile.Intakes; robot.Imported = Profile.Imported; }
+            var p = (i == 0) ? Profile : (AiProfile ?? Profile);
+            robot.Width = p.WidthCm / 100; robot.Length = p.LengthCm / 100; robot.Speed = p.Speed; robot.Acceleration = p.Acceleration; robot.TurnSpeed = p.TurnSpeed; robot.TurretCount = p.Turrets; robot.IntakeCount = p.Intakes; robot.Imported = p.Imported;
             robot.Rotation = new(0, i >= 2 ? Mathf.Pi : 0, 0);
             _session.AddChild(robot); Robots.Add(robot);
             for (int j = 0; j < 4; j++) robot.Inventory.Add(PieceKind.Pollen);

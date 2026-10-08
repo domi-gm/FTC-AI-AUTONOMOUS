@@ -20,23 +20,11 @@ public partial class SimulatorHud
         var definition = _draft.Imported;
         Clear("IMPORT CAD ROBOT", "Step-by-step CAD loader: URDF automatic kinematics or STL subassemblies");
 
-        // Overview / Instructions Guide Card
-        var guideCard = CreateCard(_dialogBody, "QUICK INSTRUCTIONS & CAD WORKFLOW");
-        var guideText = new Label
-        {
-            Text = "• OPTION A: URDF Package (Recommended) — Exports full kinematics, joints, pivots, and limits from CAD automatically. Mesh files are loaded with correct positions.\n• OPTION B: STL Subassemblies — Import rigid components (chassis, arms, sliders) and define joints manually in the Mechanism Editor.\n• Units: Ensure CAD units match your export (FTC max size is 45.72 cm / 18 inches).",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart
-        };
-        guideText.AddThemeFontSizeOverride("font_size", 15);
-        guideText.AddThemeColorOverride("font_color", TextMuted);
-        guideCard.AddChild(guideText);
-
-        // Step 1: Robot Profile & Model Source Card
-        var sourceCard = CreateCard(_dialogBody, "STEP 1: ROBOT NAME & CAD SOURCE");
-
+        // Robot Name Card
+        var nameCard = CreateCard(_dialogBody, "ROBOT PROFILE NAME");
         var nameRow = new HBoxContainer();
         nameRow.AddThemeConstantOverride("separation", 12);
-        sourceCard.AddChild(nameRow);
+        nameCard.AddChild(nameRow);
 
         var nameLbl = new Label { Text = "Robot Name:", SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
         nameLbl.AddThemeFontSizeOverride("font_size", 18);
@@ -48,37 +36,76 @@ public partial class SimulatorHud
         name.TextChanged += text => _draft.Name = text;
         nameRow.AddChild(name);
 
-        var importRow = new HBoxContainer();
-        importRow.AddThemeConstantOverride("separation", 12);
-        sourceCard.AddChild(importRow);
-
-        var urdfBtn = Button(importRow, _importBusy ? "IMPORTING…" : "IMPORT URDF + EXISTING JOINTS…", SelectUrdf);
-        urdfBtn.Disabled = _importBusy;
-        urdfBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        urdfBtn.CustomMinimumSize = new(0, 48);
-
-        var stlBtn = Button(importRow, _importBusy ? "IMPORTING…" : "ADD STL SUBASSEMBLIES…", SelectStl);
-        stlBtn.Disabled = _importBusy || definition.Parts.Count >= 32 || definition.SourceFormat == "urdf";
-        stlBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        stlBtn.CustomMinimumSize = new(0, 48);
-
-        if (definition.SourceFormat == "urdf")
-        {
-            var newStlBtn = Button(sourceCard, "START NEW MANUAL STL ROBOT", () =>
-            {
-                _draft.Imported = new ImportedRobotDefinition();
-                _importMessage = "New STL draft. Configure joints manually after importing geometry.";
-                ImportSetup();
-            });
-            newStlBtn.Disabled = _importBusy;
-            newStlBtn.CustomMinimumSize = new(0, 44);
-        }
-
         if (definition.Parts.Count == 0)
         {
+            // Two Big Cards Container: Option 1 (URDF) vs Option 2 (STL)
+            var cadOptionsCard = CreateCard(_dialogBody, "CHOOSE CAD IMPORT METHOD & INSTRUCTIONS");
+            var cadGrid = new GridContainer { Columns = 2 };
+            cadGrid.AddThemeConstantOverride("h_separation", 18);
+            cadGrid.AddThemeConstantOverride("v_separation", 16);
+            cadOptionsCard.AddChild(cadGrid);
+
+            // Card 1: URDF
+            var urdfCard = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            urdfCard.AddThemeStyleboxOverride("panel", CreateBox(CardInner, Gold, 8, 1, 18, 16));
+            cadGrid.AddChild(urdfCard);
+
+            var urdfBox = new VBoxContainer();
+            urdfBox.AddThemeConstantOverride("separation", 10);
+            urdfCard.AddChild(urdfBox);
+
+            var urdfTitle = new Label { Text = "OPTION 1: IMPORT URDF (RECOMMENDED)" };
+            urdfTitle.AddThemeFontSizeOverride("font_size", 18);
+            urdfTitle.AddThemeColorOverride("font_color", Gold);
+            urdfBox.AddChild(urdfTitle);
+
+            var urdfInst = new Label
+            {
+                Text = "• Automatic kinematics from Onshape, Fusion 360, or SolidWorks URDF exporters\n• Hinges, sliders, limits, and visual STL links are placed and connected automatically\n• No manual joint positioning or pivot calibration required",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            urdfInst.AddThemeFontSizeOverride("font_size", 14);
+            urdfInst.AddThemeColorOverride("font_color", TextWhite);
+            urdfBox.AddChild(urdfInst);
+
+            var urdfBtn = Button(urdfBox, _importBusy ? "IMPORTING…" : "IMPORT URDF + EXISTING JOINTS…", SelectUrdf);
+            urdfBtn.Disabled = _importBusy;
+            urdfBtn.CustomMinimumSize = new(0, 48);
+
+            // Card 2: STL
+            var stlCard = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            stlCard.AddThemeStyleboxOverride("panel", CreateBox(CardInner, Green, 8, 1, 18, 16));
+            cadGrid.AddChild(stlCard);
+
+            var stlBox = new VBoxContainer();
+            stlBox.AddThemeConstantOverride("separation", 10);
+            stlCard.AddChild(stlBox);
+
+            var stlTitle = new Label { Text = "OPTION 2: IMPORT STL SUBASSEMBLIES" };
+            stlTitle.AddThemeFontSizeOverride("font_size", 18);
+            stlTitle.AddThemeColorOverride("font_color", Green);
+            stlBox.AddChild(stlTitle);
+
+            var stlInst = new Label
+            {
+                Text = "• Import individual 3D .stl geometry files for chassis, arms, and sliders\n• Manually configure joint types, travel limits, and motors in Mechanism Editor\n• Full flexibility for custom FTC CAD parts and subassemblies",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            stlInst.AddThemeFontSizeOverride("font_size", 14);
+            stlInst.AddThemeColorOverride("font_color", TextWhite);
+            stlBox.AddChild(stlInst);
+
+            var stlBtn = Button(stlBox, _importBusy ? "IMPORTING…" : "ADD STL SUBASSEMBLIES…", SelectStl);
+            stlBtn.Disabled = _importBusy;
+            stlBtn.CustomMinimumSize = new(0, 48);
+
+            // Demos & Examples Row
+            var demoCard = CreateCard(_dialogBody, "SAMPLE CAD PRESETS");
             var demoRow = new HBoxContainer();
             demoRow.AddThemeConstantOverride("separation", 12);
-            sourceCard.AddChild(demoRow);
+            demoCard.AddChild(demoRow);
 
             var demoBtn = Button(demoRow, "LOAD ARTICULATED DEMO (hinge + lift)", () =>
             {
@@ -111,6 +138,36 @@ public partial class SimulatorHud
             sampleBtn.Disabled = _importBusy;
             sampleBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             sampleBtn.CustomMinimumSize = new(0, 44);
+        }
+        else
+        {
+            var sourceCard = CreateCard(_dialogBody, definition.SourceFormat == "urdf" ? "CAD SOURCE: URDF KINEMATIC PACKAGE" : "CAD SOURCE: STL SUBASSEMBLIES");
+
+            var importRow = new HBoxContainer();
+            importRow.AddThemeConstantOverride("separation", 12);
+            sourceCard.AddChild(importRow);
+
+            var urdfBtn = Button(importRow, _importBusy ? "IMPORTING…" : "IMPORT URDF + EXISTING JOINTS…", SelectUrdf);
+            urdfBtn.Disabled = _importBusy;
+            urdfBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            urdfBtn.CustomMinimumSize = new(0, 48);
+
+            var stlBtn = Button(importRow, _importBusy ? "IMPORTING…" : "ADD STL SUBASSEMBLIES…", SelectStl);
+            stlBtn.Disabled = _importBusy || definition.Parts.Count >= 32 || definition.SourceFormat == "urdf";
+            stlBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            stlBtn.CustomMinimumSize = new(0, 48);
+
+            if (definition.SourceFormat == "urdf")
+            {
+                var newStlBtn = Button(sourceCard, "START NEW MANUAL STL ROBOT", () =>
+                {
+                    _draft.Imported = new ImportedRobotDefinition();
+                    _importMessage = "New STL draft. Configure joints manually after importing geometry.";
+                    ImportSetup();
+                });
+                newStlBtn.Disabled = _importBusy;
+                newStlBtn.CustomMinimumSize = new(0, 44);
+            }
         }
 
         // Step 2: Scale & Orientation Calibration Card
@@ -257,6 +314,25 @@ public partial class SimulatorHud
         apply.Disabled = !valid || _importBusy;
         apply.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         apply.CustomMinimumSize = new(0, 52);
+
+        var addToListBtn = Button(actionsRow, "SAVE TO ROBOT LIST", () =>
+        {
+            try
+            {
+                _draft.Validate();
+                RobotRoster.AddOrUpdate(_draft);
+                Game.Status = $"Saved '{_draft.Name}' to robot roster!";
+                NavigateTo(ScreenType.RobotRoster);
+            }
+            catch (Exception ex)
+            {
+                _importMessage = "Cannot save: " + ex.Message;
+                ImportSetup();
+            }
+        });
+        addToListBtn.Disabled = !valid || _importBusy;
+        addToListBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        addToListBtn.CustomMinimumSize = new(0, 52);
 
         var paramBtn = Button(actionsRow, "USE PARAMETRIC ROBOT", () =>
         {
