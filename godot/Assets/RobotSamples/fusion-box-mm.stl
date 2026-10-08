@@ -1,0 +1,86 @@
+solid fusion_box
+facet normal 0 0 0
+outer loop
+vertex 0 0 0
+vertex 400 300 0
+vertex 400 0 0
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 0 0 0
+vertex 0 300 0
+vertex 400 300 0
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 0 0 250
+vertex 400 0 250
+vertex 400 300 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 0 0 250
+vertex 400 300 250
+vertex 0 300 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 0 0 0
+vertex 400 0 0
+vertex 400 0 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 0 0 0
+vertex 400 0 250
+vertex 0 0 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 400 0 0
+vertex 400 300 0
+vertex 400 300 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 400 0 0
+vertex 400 300 250
+vertex 400 0 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 400 300 0
+vertex 0 300 0
+vertex 0 300 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 400 300 0
+vertex 0 300 250
+vertex 400 300 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 0 300 0
+vertex 0 0 0
+vertex 0 0 250
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 0 300 0
+vertex 0 0 250
+vertex 0 300 250
+endloop
+endfacet
+endsolid fusion_box

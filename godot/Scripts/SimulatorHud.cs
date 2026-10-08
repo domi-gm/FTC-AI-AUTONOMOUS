@@ -118,6 +118,33 @@ public partial class SimulatorHud : CanvasLayer
         theme.SetStylebox("grabber_area_highlight", "HSlider", sliderFill);
 
         _root.Theme = theme;
+_score = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, OffsetTop = 16, OffsetLeft = -260, OffsetRight = 260, OffsetBottom = 80, AnchorLeft = .5f, AnchorRight = .5f };
+_root.AddChild(_score);
+_red = ScoreLabel(VisualFactory.Red); _clock = ScoreLabel(Colors.White); _blue = ScoreLabel(VisualFactory.Blue);
+_score.AddChild(_red); _score.AddChild(_clock); _score.AddChild(_blue);
+_telemetry = new Label { OffsetLeft = 24, OffsetTop = -128, OffsetRight = 560, OffsetBottom = -24, AnchorTop = 1, AnchorBottom = 1 };
+_root.AddChild(_telemetry);
+var telemetryPanel=new RobotTelemetryPanel { Game=Game, OffsetLeft=24, OffsetTop=88,
+    OffsetRight=328, OffsetBottom=496 };
+_root.AddChild(telemetryPanel);
+_status = new Label { OffsetLeft=24, OffsetTop=16, OffsetRight=380, OffsetBottom=80,
+    AutowrapMode=TextServer.AutowrapMode.WordSmart, MaxLinesVisible=2, ClipText=true,
+    MouseFilter=Control.MouseFilterEnum.Pass };
+_status.AddThemeColorOverride("font_color", new("a1afc6")); _root.AddChild(_status);
+var controls = new HBoxContainer { AnchorLeft = 1, AnchorRight = 1, AnchorTop = 1, AnchorBottom = 1, OffsetLeft = -455, OffsetRight = -24, OffsetTop = -62, OffsetBottom = -20 };
+_root.AddChild(controls);
+Button(controls, "CAMERA [C]", () => Game.Camera.Mode = (Game.Camera.Mode + 1) % 3);
+Button(controls, "RESET [R]", () => Game.Reset());
+Button(controls, "MENU [ESC]", () => { if (Game.Started) Game.TogglePause(); else ShowMenu(); });
+_menu = new PanelContainer { AnchorLeft = .5f, AnchorRight = .5f, AnchorTop = .5f, AnchorBottom = .5f, OffsetLeft = -295, OffsetRight = 295, OffsetTop = -280, OffsetBottom = 280 };
+_menu.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = new Color(.045f, .06f, .09f, .96f), BorderColor = new("d4ac37"), BorderWidthTop = 2, ContentMarginLeft = 28, ContentMarginRight = 28, ContentMarginTop = 20, ContentMarginBottom = 20 });
+_root.AddChild(_menu);
+var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+_menu.AddChild(scroll);
+_content = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+_content.AddThemeConstantOverride("separation", 8); scroll.AddChild(_content);
+CreateJointControls();
+
     }
 
     private static StyleBoxFlat CreateBox(Color bg, Color border, int radius = 8, int borderWidth = 1, int padX = 16, int padY = 12)
@@ -396,7 +423,24 @@ public partial class SimulatorHud : CanvasLayer
     // =========================================================================
     public void ShowMenu()
     {
-        NavigateTo(ScreenType.Main, true);
+Clear("BIOBUZZ SIMULATOR", "GODOT + C#  /  LOCAL DEVELOPMENT BUILD");
+Button(_content, "PLAY MATCH", () => Start(false));
+Button(_content, "PRACTICE", () => Start(true));
+Button(_content, "ROBOT CREATOR", RobotSetup);
+Button(_content, "IMPORT ROBOT (STL / URDF)", ImportSetup);
+Button(_content, "TWO PLAYERS: " + (Game.TwoPlayers ? "ON" : "OFF"), () => { Game.TwoPlayers = !Game.TwoPlayers; ShowMenu(); });
+Button(_content, "SETTINGS", Settings);
+Button(_content, "HOW TO PLAY", Help);
+Button(_content, "ACCURACY / PORT STATUS", Accuracy);
+Button(_content, "QUIT", () => GetTree().Quit());
+}
+private void Start(bool practice) { Game.Practice = practice; Game.Reset(); _menu.Visible = false; }
+public void ShowResults()
+{
+    Clear("MATCH COMPLETE", $"RED {Game.RedScore}   /   BLUE {Game.BlueScore}");
+    Button(_content, "PLAY AGAIN", () => Start(false));
+    Button(_content, "MAIN MENU", () => { Game.Started = false; ShowMenu(); });
+
     }
 
     public void ShowPause(bool paused)
@@ -458,99 +502,27 @@ public partial class SimulatorHud : CanvasLayer
 
     private void ClearDialog(string title, string subtitle = "")
     {
-        foreach (var child in _dialogBody.GetChildren())
-        {
-            _dialogBody.RemoveChild(child);
-            child.QueueFree();
-        }
-        _dialogTitle.Text = title.ToUpperInvariant();
-        _dialogSubtitle.Text = subtitle;
-        _dialogSubtitle.Visible = !string.IsNullOrEmpty(subtitle);
-        _modalScrim.Visible = true;
-        _dialogPanel.Visible = true;
-        _dialogScroll.ScrollVertical = 0;
-    }
-
-    private void RenderCurrentScreen()
+private void BuildRobotCreator()
+{
+    _draft ??= Game.Profile.Copy();
+    Clear("ROBOT CREATOR", "Local profile • Apply restarts the scene");
+    if (_draft.Imported == null)
     {
-        switch (_currentScreen)
-        {
-            case ScreenType.Main:
-                BuildMainMenu();
-                break;
-            case ScreenType.Pause:
-                BuildPauseMenu();
-                break;
-            case ScreenType.RobotCreator:
-                BuildRobotCreator();
-                break;
-            case ScreenType.AutonomousPathing:
-                BuildAutonomousPathing();
-                break;
-            case ScreenType.Settings:
-                BuildSettings();
-                break;
-            case ScreenType.Help:
-                BuildHelp();
-                break;
-            case ScreenType.Results:
-                BuildResults();
-                break;
-            default:
-                CloseMenu();
-                break;
-        }
-
-        CallDeferred(MethodName.FocusFirstInteractiveControl);
+        Slider("Width (cm)", 25, 45.72, _draft.WidthCm, v => _draft.WidthCm = (float)v);
+        Slider("Length (cm)", 25, 45.72, _draft.LengthCm, v => _draft.LengthCm = (float)v);
     }
+    Button(_content, _draft.Imported == null ? "IMPORT FUSION / STL ROBOT" : "EDIT IMPORTED STL ROBOT", ImportSetup);
+    Slider("Speed (m/s)", .3, 3, _draft.Speed, v => _draft.Speed = (float)v);
+    Slider("Acceleration (m/s²)", .5, 8, _draft.Acceleration, v => _draft.Acceleration = (float)v);
+    Slider("Turn speed (rad/s)", .5, 6, _draft.TurnSpeed, v => _draft.TurnSpeed = (float)v);
+    Button(_content, $"TURRETS: {_draft.Turrets}  /  INTAKES: {_draft.Intakes}", () => { _draft.Turrets = _draft.Turrets % 3 + 1; RobotSetup(); });
+    Button(_content, "TOGGLE SECOND INTAKE", () => { _draft.Intakes = 3 - _draft.Intakes; RobotSetup(); });
+    Button(_content, "SAVE + APPLY", () => {
+        try { _draft.Save(); Game.Profile = _draft; Game.Reset(); }
+        catch (Exception ex) { Game.Status = "Cannot apply robot: " + ex.Message; }
+    });
+}
 
-    private void FocusFirstInteractiveControl()
-    {
-        foreach (var node in _dialogBody.GetChildren())
-        {
-            if (node is Button btn && btn.IsVisibleInTree() && !btn.Disabled)
-            {
-                btn.GrabFocus();
-                return;
-            }
-            if (node is Container container)
-            {
-                foreach (var sub in container.GetChildren())
-                {
-                    if (sub is Button subBtn && subBtn.IsVisibleInTree() && !subBtn.Disabled)
-                    {
-                        subBtn.GrabFocus();
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    // =========================================================================
-    // SCREEN: MAIN MENU
-    // =========================================================================
-    private void BuildMainMenu()
-    {
-        ClearDialog("BIOBUZZ SIMULATOR", "GODOT + C#  /  LOCAL DEVELOPMENT BUILD");
-
-        // Primary Game Modes Card
-        var modesCard = CreateCard(_dialogBody, "MATCH & TRAINING MODES");
-
-        CreateButton(modesCard, "AI TRAINING GROUND [TRAIN]", () =>
-        {
-            Game.TrainingGround = true;
-            Game.AutonomousDrill = false;
-            Game.Practice = true;
-            Game.Reset();
-            CloseMenu();
-        }, true);
-
-        CreateButton(modesCard, "30S AUTONOMOUS DRILL [AUTO]", () =>
-        {
-            Game.TrainingGround = false;
-            Game.AutonomousDrill = true;
-            StartMatch(false);
         });
 
         CreateButton(modesCard, "PLAY FULL MATCH (158S)", () =>
@@ -1292,111 +1264,115 @@ public partial class SimulatorHud : CanvasLayer
     // =========================================================================
     public override void _Process(double delta)
     {
-        if (Game == null || Game.Player == null) return;
+if (Game == null || Game.Player == null) return;
 
-        bool isMenuOpen = _currentScreen != ScreenType.None;
-        _telemetryPanel.Visible = Game.Started && !isMenuOpen;
-        _telemetryCard.Visible = Game.Started && !isMenuOpen;
-        _controlsBar.Visible = !isMenuOpen;
-        _statusToast.Visible = !isMenuOpen && !string.IsNullOrEmpty(Game.Status);
+UpdateJointControls();
 
-        _telemetryCard.TooltipText = $"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}";
-        _statusToast.TooltipText = Game.Status;
+bool isMenuOpen = _currentScreen != ScreenType.None;
+_telemetryPanel.Visible = Game.Started && !isMenuOpen;
+_telemetryCard.Visible = Game.Started && !isMenuOpen;
+_controlsBar.Visible = !isMenuOpen;
+_statusToast.Visible = !isMenuOpen && !string.IsNullOrEmpty(Game.Status);
 
-        _redScoreLabel.Text = Game.RedScore.ToString();
-        _blueScoreLabel.Text = Game.BlueScore.ToString();
+_telemetryCard.TooltipText = $"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}";
+_statusToast.TooltipText = Game.Status;
 
-        string phaseName;
-        float timeLeft;
-        Color phaseColor;
+if (_redScoreLabel != null) _redScoreLabel.Text = Game.RedScore.ToString();
+if (_blueScoreLabel != null) _blueScoreLabel.Text = Game.BlueScore.ToString();
+if (_red != null) _red.Text = $"RED  {Game.RedScore}"; if (_blue != null) _blue.Text = $"{Game.BlueScore}  BLUE";
 
-        if (Game.TrainingGround)
-        {
-            phaseName = "AI TRAINING GROUND";
-            timeLeft = Game.Elapsed;
-            phaseColor = Gold;
-        }
-        else if (Game.Practice)
-        {
-            phaseName = "PRACTICE ARENA";
-            timeLeft = Game.Elapsed;
-            phaseColor = Purple;
-        }
-        else if (Game.AutonomousDrill)
-        {
-            phaseName = "30S AUTONOMOUS DRILL";
-            timeLeft = Mathf.Max(0, 30 - Game.Elapsed);
-            phaseColor = Gold;
-        }
-        else if (Game.Elapsed < 30)
-        {
-            phaseName = "AUTONOMOUS PERIOD";
-            timeLeft = 30 - Game.Elapsed;
-            phaseColor = Gold;
-        }
-        else if (Game.Elapsed < 38)
-        {
-            phaseName = "TRANSITION";
-            timeLeft = 38 - Game.Elapsed;
-            phaseColor = Orange;
-        }
-        else if (Game.Elapsed < 158)
-        {
-            phaseName = "TELEOP PERIOD";
-            timeLeft = 158 - Game.Elapsed;
-            phaseColor = Green;
-        }
-        else
-        {
-            phaseName = "MATCH COMPLETE";
-            timeLeft = 0;
-            phaseColor = Red;
-        }
+string phaseName;
+float timeLeft;
+Color phaseColor;
 
-        _phaseBadge.Text = phaseName;
-        _phaseBadge.AddThemeColorOverride("font_color", phaseColor);
-        _clockLabel.Text = $"{(int)timeLeft / 60}:{(int)timeLeft % 60:00}";
+if (Game.TrainingGround)
+{
+    phaseName = "AI TRAINING GROUND";
+    timeLeft = Game.Elapsed;
+    phaseColor = Gold;
+}
+else if (Game.Practice)
+{
+    phaseName = "PRACTICE ARENA";
+    timeLeft = Game.Elapsed;
+    phaseColor = Purple;
+}
+else if (Game.AutonomousDrill)
+{
+    phaseName = "30S AUTONOMOUS DRILL";
+    timeLeft = Mathf.Max(0, 30 - Game.Elapsed);
+    phaseColor = Gold;
+}
+else if (Game.Elapsed < 30)
+{
+    phaseName = "AUTONOMOUS PERIOD";
+    timeLeft = 30 - Game.Elapsed;
+    phaseColor = Gold;
+}
+else if (Game.Elapsed < 38)
+{
+    phaseName = "TRANSITION";
+    timeLeft = 38 - Game.Elapsed;
+    phaseColor = Orange;
+}
+else if (Game.Elapsed < 158)
+{
+    phaseName = "TELEOP PERIOD";
+    timeLeft = 158 - Game.Elapsed;
+    phaseColor = Green;
+}
+else
+{
+    phaseName = "MATCH COMPLETE";
+    timeLeft = 0;
+    phaseColor = Red;
+}
 
-        var pos = Game.Player.Position;
-        _telemetryHeader.Text = $"ROBOT 1 ({(Game.Player.Red ? "RED" : "BLUE")})  •  X: {pos.X * 100:0.0} cm, Y: {-pos.Z * 100:0.0} cm";
+_phaseBadge.Text = phaseName;
+_phaseBadge.AddThemeColorOverride("font_color", phaseColor);
+_clockLabel.Text = $"{(int)timeLeft / 60}:{(int)timeLeft % 60:00}";
 
-        var inv = Game.Player.Inventory;
-        for (int i = 0; i < 4; i++)
-        {
-            var dot = _inventorySlots.GetChild<ColorRect>(i);
-            if (i < inv.Count)
-            {
-                dot.Color = inv[i] == PieceKind.Pollen ? Gold : inv[i] == PieceKind.RedNectar ? Red : Blue;
-            }
-            else
-            {
-                dot.Color = new("292e39");
-            }
-        }
+if (_clock != null)
+{
+    string phase = Game.Practice ? "PRACTICE" : Game.Elapsed < 30 ? "AUTO" : Game.Elapsed < 38 ? "TRANSITION" : Game.Elapsed < 158 ? "TELEOP" : "FINAL";
+    float time = Game.Practice ? Game.Elapsed : Game.Elapsed < 30 ? 30 - Game.Elapsed : Game.Elapsed < 38 ? 38 - Game.Elapsed : Mathf.Max(0, 158 - Game.Elapsed);
+    _clock.Text = $"{(int)time / 60}:{(int)time % 60:00}  {phase}";
+    _clock.AddThemeFontSizeOverride("font_size", 22);
+}
 
-        string intakeState = Game.Player.Intake ? "ACTIVE" : "OFF";
-        string targetState = Game.AimFlower ? "FLOWER" : "HIVE";
-        _telemetrySubsystems.Text = $"INTAKE: {intakeState}   |   TARGET: {targetState}   |   SHOT: {Game.Player.ShotStatus}";
+var pos = Game.Player.Position;
+_telemetryHeader.Text = $"ROBOT 1 ({(Game.Player.Red ? "RED" : "BLUE")})  •  X: {pos.X * 100:0.0} cm, Y: {-pos.Z * 100:0.0} cm";
 
-        string[] camModes = { "ORBIT", "OVERHEAD", "CHASE" };
-        _cameraQuickBtn.Text = $"CAM: {camModes[Game.Camera.Mode % 3]} [C]";
-        _targetQuickBtn.Text = $"TARGET: {(Game.AimFlower ? "FLOWER" : "HIVE")} [T]";
-
-        if (_statusToast.Visible)
-        {
-            _statusToastLabel.Text = Game.Status;
-        }
-    }
-
-    public override void _UnhandledInput(InputEvent e)
+var inv = Game.Player.Inventory;
+for (int i = 0; i < 4; i++)
+{
+    var dot = _inventorySlots.GetChild<ColorRect>(i);
+    if (i < inv.Count)
     {
-        if (e is InputEventKey k && k.Pressed && !k.Echo)
-        {
-            if (k.PhysicalKeycode == Key.Escape && _currentScreen != ScreenType.None)
-            {
-                GoBack();
-                GetViewport().SetInputAsHandled();
-            }
-        }
+        dot.Color = inv[i] == PieceKind.Pollen ? Gold : inv[i] == PieceKind.RedNectar ? Red : Blue;
+    }
+    else
+    {
+        dot.Color = new("292e39");
+    }
+}
+
+string intakeState = Game.Player.Intake ? "ACTIVE" : "OFF";
+string targetState = Game.AimFlower ? "FLOWER" : "HIVE";
+_telemetrySubsystems.Text = $"INTAKE: {intakeState}   |   TARGET: {targetState}   |   SHOT: {Game.Player.ShotStatus}";
+
+if (_telemetry != null)
+{
+    var p = Game.Player.Position;
+    _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot" + (Game.Player.Rig == null ? "" : "\n" + Game.Player.Rig.MotorStatus);
+}
+
+if (_status != null) { _status.Text = Game.Status; _status.TooltipText = Game.Status; }
+
+if (_statusToast.Visible)
+{
+    _statusToastLabel.Text = Game.Status;
+}
+
     }
 }

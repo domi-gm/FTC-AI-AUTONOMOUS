@@ -39,6 +39,9 @@ public partial class Simulation : Node3D
     private int _redLastTips, _blueLastTips;
     public override void _Ready()
     {
+        foreach (var arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--physics-test-") && int.TryParse(arg.Substring(15),out int ticks) && ticks>=120 && ticks<=1920)
+                Engine.PhysicsTicksPerSecond=ticks;
         AddChild(new Arena { Name = "Arena" });
         Camera = new OrbitCamera { Game = this, Current = true, Fov = 46, Far = 50, Near = .02f, Name = "Camera" }; AddChild(Camera);
         Hud = new SimulatorHud { Game = this }; AddChild(Hud);
@@ -53,8 +56,19 @@ public partial class Simulation : Node3D
         if (OS.GetCmdlineUserArgs().Contains("--gravity-test")) CallDeferred(MethodName.GravityTest);
         if (OS.GetCmdlineUserArgs().Contains("--contact-test")) CallDeferred(MethodName.ContactTest);
         if (OS.GetCmdlineUserArgs().Contains("--fps-test")) CallDeferred(MethodName.FpsTest);
-        if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.ShotTest);
+if (OS.GetCmdlineUserArgs().Contains("--stl-test")) CallDeferred(nameof(StlTest));
+if (OS.GetCmdlineUserArgs().Contains("--mechanism-test")) CallDeferred(nameof(MechanismTest));
+if (OS.GetCmdlineUserArgs().Contains("--urdf-test")) CallDeferred(nameof(UrdfTest));
+if (OS.GetCmdlineUserArgs().Contains("--joint-controls-test")) CallDeferred(nameof(JointControlsTest));
+if (OS.GetCmdlineUserArgs().Contains("--mechanism-demo")) Hud.CallDeferred(nameof(SimulatorHud.ShowMechanismDemo));
+if (OS.GetCmdlineUserArgs().Contains("--joint-controls-demo")) CallDeferred(nameof(JointControlsDemo));
+if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.ShotTest);
+
     }
+    private void StlTest() => StlImportChecks.Run(this);
+    private async void MechanismTest() => await RobotMechanismChecks.Run(this);
+    private async void UrdfTest() => await UrdfImportChecks.Run(this);
+    private async void JointControlsTest() => await JointControlChecks.Run(this);
     public void Reset(bool start = true)
     {
         if (_session != null) { RemoveChild(_session); _session.QueueFree(); }
@@ -72,7 +86,7 @@ public partial class Simulation : Node3D
         for (int i = 0; i < 4; i++)
         {
             var robot = new RobotAgent { Game = this, Red = i < 2, Number = i % 2 + 1, Bot = i > 0 && !(TwoPlayers && i == 2), Position = starts[i], Name = $"Robot{i + 1}" };
-            if (i == 0) { robot.Width = Profile.WidthCm / 100; robot.Length = Profile.LengthCm / 100; robot.Speed = Profile.Speed; robot.Acceleration = Profile.Acceleration; robot.TurnSpeed = Profile.TurnSpeed; robot.TurretCount = Profile.Turrets; robot.IntakeCount = Profile.Intakes; }
+            if (i == 0) { robot.Width = Profile.WidthCm / 100; robot.Length = Profile.LengthCm / 100; robot.Speed = Profile.Speed; robot.Acceleration = Profile.Acceleration; robot.TurnSpeed = Profile.TurnSpeed; robot.TurretCount = Profile.Turrets; robot.IntakeCount = Profile.Intakes; robot.Imported = Profile.Imported; }
             robot.Rotation = new(0, i >= 2 ? Mathf.Pi : 0, 0);
             _session.AddChild(robot); Robots.Add(robot);
             for (int j = 0; j < 4; j++) robot.Inventory.Add(PieceKind.Pollen);
@@ -286,8 +300,10 @@ public partial class Simulation : Node3D
     }
     public override void _UnhandledInput(InputEvent e)
     {
+        if (Hud.MenuVisible && e is InputEventKey menuKey && menuKey.PhysicalKeycode != Key.Escape) return;
         if (e is InputEventKey k && k.Pressed && !k.Echo)
         {
+            if (Player.Rig?.HandleToggleKey(k) == true) { GetViewport().SetInputAsHandled(); return; }
             switch (k.PhysicalKeycode)
             {
                 case Key.Escape: TogglePause(); break;
@@ -298,6 +314,7 @@ public partial class Simulation : Node3D
                 case Key.N: if (Practice && Running) SpawnBall(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar, Player.Position + Player.Front * .5f + Vector3.Up * .12f); break;
                 case Key.H: DropHuman(Player.Red); break;
                 case Key.K: KnockFlower(Player); break;
+                case Key.I: Player.Rig?.SelectNextMotor(); break;
                 case Key.F5: Save(); break;
                 case Key.F9: Load(); break;
             }
@@ -331,6 +348,7 @@ public partial class Simulation : Node3D
     public void SetFrozen(bool frozen)
     {
         _session.ProcessMode = frozen ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
+        foreach (var robot in Robots) robot.Rig?.SetFrozen(frozen);
         foreach (var ball in Balls) if (!ball.Stored)
         {
             if (frozen && !_pausedVelocities.ContainsKey(ball)) _pausedVelocities[ball] = (ball.LinearVelocity, ball.AngularVelocity);
@@ -384,7 +402,7 @@ public partial class Simulation : Node3D
             RedAngularVelocity = RedHive.AngularVelocity, BlueAngularVelocity = BlueHive.AngularVelocity,
             RedTips = RedHive.Tips, BlueTips = BlueHive.Tips, Tokens = (int[])HumanTokens.Clone(),
             Robots = Robots.Select(r => new RobotData { X = r.Position.X, Z = r.Position.Z, Yaw = r.Rotation.Y, Inventory = r.Inventory.ToArray(),
-                ShotsFired=r.ShotsFired, ShotsMade=r.ShotsMade, Vx = r.Velocity.X, Vz = r.Velocity.Z, Cooldown = r.Cooldown, Speed = r.Speed, Acceleration = r.Acceleration, TurnSpeed = r.TurnSpeed }).ToArray(),
+                Mechanisms = r.Rig?.Capture(), ShotsFired=r.ShotsFired, ShotsMade=r.ShotsMade, Vx = r.Velocity.X, Vz = r.Velocity.Z, Cooldown = r.Cooldown, Speed = r.Speed, Acceleration = r.Acceleration, TurnSpeed = r.TurnSpeed }).ToArray(),
             Balls = Balls.Select(b => {
                 string container = Container(b, out int slot);
                 var linear = _pausedVelocities.TryGetValue(b, out var motion) ? motion.Linear : b.LinearVelocity;
@@ -421,10 +439,12 @@ public partial class Simulation : Node3D
             }
         }
         var profile=data.Profile?.Copy() ?? new RobotProfile(); profile.Validate();
+        for (int i = 0; i < data.Robots.Length; i++) RobotLinkState.Validate(data.Robots[i].Mechanisms, i == 0 ? profile.Imported : null);
         Practice=data.Practice; TwoPlayers=data.TwoPlayers; Profile=profile; AimFlower=data.AimFlower; Reset(); Elapsed=data.Time;
         for (int i = 0; i < 4; i++)
         {
             var d = data.Robots[i]; var r = Robots[i]; r.Position = new(d.X, 0, d.Z); r.Rotation = new(0, d.Yaw, 0);
+            r.Rig?.Restore(d.Mechanisms);
             r.Inventory.Clear(); r.Inventory.AddRange(d.Inventory); r.Velocity = new(d.Vx, 0, d.Vz); r.Cooldown = d.Cooldown;
             r.ShotsFired=d.ShotsFired; r.ShotsMade=d.ShotsMade; r.Speed = d.Speed; r.Acceleration = d.Acceleration; r.TurnSpeed = d.TurnSpeed;
         }
@@ -438,6 +458,7 @@ public partial class Simulation : Node3D
             var ball = SpawnBall(b.Kind, new(b.X, b.Y, b.Z));
             ball.Preload = b.Preload;
             ball.ShotRobotIndex=b.ShotRobotIndex; ball.ShotConfirmed=b.ShotConfirmed;
+            if (ball.ShotRobotIndex >= 0) Robots[ball.ShotRobotIndex].ExcludeLauncher(ball);
             if (b.Container != "free")
             {
                 string[] parts = b.Container.Split(':'); int index = int.Parse(parts[1]);
@@ -462,6 +483,7 @@ public partial class Simulation : Node3D
         public RobotData[] Robots { get; set; } public BallData[] Balls { get; set; }
     }
     public sealed class RobotData { public int ShotsFired {get;set;} public int ShotsMade {get;set;} public float X { get; set; } public float Z { get; set; } public float Yaw { get; set; } public PieceKind[] Inventory { get; set; }
+        public RobotLinkState[] Mechanisms { get; set; }
         public float Vx { get; set; } public float Vz { get; set; } public float Cooldown { get; set; } public float Speed { get; set; } public float Acceleration { get; set; } public float TurnSpeed { get; set; } }
     public sealed class BallData { public int ShotRobotIndex {get;set;}=-1; public bool ShotConfirmed {get;set;} public bool Preload {get;set;} public PieceKind Kind { get; set; } public float X { get; set; } public float Y { get; set; } public float Z { get; set; }
         public float Vx { get; set; } public float Vy { get; set; } public float Vz { get; set; } public float Wx { get; set; } public float Wy { get; set; } public float Wz { get; set; }

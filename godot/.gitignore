@@ -3,3 +3,9 @@ bin/
 obj/
 .vs/
 *.user
+.appdata-local/
+.localappdata-local/
+.dotnet-local/
+.nuget-local/
+run-output.log
+run-errors.log

@@ -151,6 +151,15 @@ public static class SimulatorRegressionChecks
                 +game.Player.Length/2*Mathf.Abs(Mathf.Sin(game.Player.Rotation.Y));
             Check(game.Player.Position.X-support>-.004f && Mathf.Abs(game.Player.Rotation.Y)<.2f,
                 "Rotation candidates are blocked before the chassis turns through a wall");
+            Reset(); await Frames(3);
+            game.Player.Position=new(.8f,0,-.9f); game.Player.Intake=false;
+            var pushed=game.SpawnBall(PieceKind.Pollen,game.Player.Position+new Vector3(game.Player.Width/2+.10f,.03556f,0));
+            float beforePush=pushed.Position.X; game.Player.Command=Vector3.Right; await Frames(60);
+            Check(pushed.Position.X>beforePush+.10f,"Driving chassis pushes a loose floor ball with intake off");
+            game.Player.Command=Vector3.Zero; game.Player.ExcludeLauncher(pushed);
+            Check(pushed.GetCollisionExceptions().Contains(game.Player),"Launch temporarily excludes its own chassis");
+            await Frames(30);
+            Check(!pushed.GetCollisionExceptions().Contains(game.Player),"Launch exclusion expires so the same robot can push that ball again");
             Reset(false); await Frames(3);
             game.Elapsed=30-.5f/Engine.PhysicsTicksPerSecond; game.Player.Velocity=Vector3.Right; game.Player.Command=Vector3.Right;
             game.Player.FireCommand=true;
@@ -160,6 +169,9 @@ public static class SimulatorRegressionChecks
                 "Transition stops driving and rejects direct firing");
             game.Elapsed=37.995f; await Frames(3);
             Check(game.DrivingAllowed,"Teleop re-enables driving after transition");
+            var ai=game.Robots[1]; ai.Bot=true; ai.Position=new(.8f,0,-.9f); var aiStart=ai.Position;
+            await Frames(60);
+            Check(ai.IsPhysicsProcessing() && ai.Position.DistanceTo(aiStart)>.10f,"Opponent AI resumes driving during teleop after the transition");
             game.Elapsed=157.995f; await Frames(3);
             Check(game.Elapsed==158 && game.Finished && game.Balls.Where(b=>!b.Stored).All(b=>b.Freeze),
                 "Match ends at 158 seconds with frozen physics");

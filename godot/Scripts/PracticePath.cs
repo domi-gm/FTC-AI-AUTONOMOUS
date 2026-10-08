@@ -25,9 +25,9 @@ public partial class PracticePath : Node3D
     {
         if (!float.IsFinite(point.X+point.Y+point.Z) || point.X<0 || point.X>Arena.Size || point.Z>0 || point.Z < -Arena.Size) return false;
         var robot=Game.Player;
-        using var shape=new BoxShape3D { Size=new(robot.Width+.006f,.28f,robot.Length+.006f) };
+        using var shape=new BoxShape3D { Size=robot.Imported == null ? new Vector3(robot.Width+.006f,.28f,robot.Length+.006f) : robot.CollisionSize + new Vector3(.006f,0,.006f) };
         using var query=new PhysicsShapeQueryParameters3D { Shape=shape, CollisionMask=1,
-            Transform=new Transform3D(robot.GlobalBasis,new Vector3(point.X,.15f,point.Z)) };
+            Transform=new Transform3D(robot.GlobalBasis,new Vector3(point.X,0,point.Z) + robot.GlobalBasis * robot.CollisionCenter) };
         return GetWorld3D().DirectSpaceState.IntersectShape(query,1).Count==0;
     }
     public bool ReplacePoints(float[][] data)

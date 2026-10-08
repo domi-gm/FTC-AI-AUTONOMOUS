@@ -7,6 +7,12 @@ public partial class OrbitCamera : Camera3D
     public float Distance = 6.4f;
     private float _yaw = .25f, _pitch = .70f;
     private Vector3 _pan;
+    public void FocusPlayer()
+    {
+        if (Game.Player == null) return;
+        Mode = 0; Distance = 1.7f; _yaw = .6f; _pitch = .8f;
+        _pan = Game.Player.Position + Vector3.Up * .2f - Arena.World(Arena.Center,Arena.Center,.30f);
+    }
     public void ResetView() { Mode=0; Distance=6.4f; _yaw=.25f; _pitch=.70f; _pan=Vector3.Zero; }
     public void Drag(Vector2 relative, bool pan)
     {

@@ -12,13 +12,23 @@ public sealed class RobotProfile
     public float TurnSpeed { get; set; } = 2.8f;
     public int Turrets { get; set; } = 1;
     public int Intakes { get; set; } = 1;
-    public RobotProfile Copy() => (RobotProfile)MemberwiseClone();
+    public ImportedRobotDefinition Imported { get; set; }
+    public RobotProfile Copy()
+    {
+        var copy = (RobotProfile)MemberwiseClone(); copy.Imported = Imported?.Copy(); return copy;
+    }
     public void Validate()
     {
         if (!float.IsFinite(WidthCm + LengthCm + Speed + Acceleration + TurnSpeed)) throw new ArgumentException("Non-finite robot parameters");
         WidthCm = Mathf.Clamp(WidthCm, 25, 45.72f); LengthCm = Mathf.Clamp(LengthCm, 25, 45.72f);
         Speed = Mathf.Clamp(Speed, .3f, 3); Acceleration = Mathf.Clamp(Acceleration, .5f, 8); TurnSpeed = Mathf.Clamp(TurnSpeed, .5f, 6);
         Turrets = Math.Clamp(Turrets, 1, 3); Intakes = Math.Clamp(Intakes, 1, 2);
+        if (Imported != null)
+        {
+            RobotMechanismValidation.ValidateReady(Imported);
+            var bounds = ImportedRobot.Bounds(Imported);
+            WidthCm = bounds.Size.X * 100; LengthCm = bounds.Size.Z * 100;
+        }
     }
     public static RobotProfile Load()
     {
