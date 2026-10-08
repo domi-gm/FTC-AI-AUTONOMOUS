@@ -47,6 +47,7 @@ public partial class SimulatorHud : CanvasLayer
     private HBoxContainer _controlsBar;
     private Button _cameraQuickBtn, _targetQuickBtn;
     private RobotTelemetryPanel _telemetryPanel;
+    private string _rebindingAction;
 
     // Classic Theme Palette (Restored original aesthetic, scaled 1.5x)
     private static readonly Color Gold = VisualFactory.Gold;           // #f2c230
@@ -76,6 +77,7 @@ public partial class SimulatorHud : CanvasLayer
         SetupTheme();
         BuildHudLayer();
         BuildModalDialog();
+        CreateJointControls();
 
         _modalScrim.Visible = false;
         _dialogPanel.Visible = false;
@@ -118,33 +120,6 @@ public partial class SimulatorHud : CanvasLayer
         theme.SetStylebox("grabber_area_highlight", "HSlider", sliderFill);
 
         _root.Theme = theme;
-_score = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, OffsetTop = 16, OffsetLeft = -260, OffsetRight = 260, OffsetBottom = 80, AnchorLeft = .5f, AnchorRight = .5f };
-_root.AddChild(_score);
-_red = ScoreLabel(VisualFactory.Red); _clock = ScoreLabel(Colors.White); _blue = ScoreLabel(VisualFactory.Blue);
-_score.AddChild(_red); _score.AddChild(_clock); _score.AddChild(_blue);
-_telemetry = new Label { OffsetLeft = 24, OffsetTop = -128, OffsetRight = 560, OffsetBottom = -24, AnchorTop = 1, AnchorBottom = 1 };
-_root.AddChild(_telemetry);
-var telemetryPanel=new RobotTelemetryPanel { Game=Game, OffsetLeft=24, OffsetTop=88,
-    OffsetRight=328, OffsetBottom=496 };
-_root.AddChild(telemetryPanel);
-_status = new Label { OffsetLeft=24, OffsetTop=16, OffsetRight=380, OffsetBottom=80,
-    AutowrapMode=TextServer.AutowrapMode.WordSmart, MaxLinesVisible=2, ClipText=true,
-    MouseFilter=Control.MouseFilterEnum.Pass };
-_status.AddThemeColorOverride("font_color", new("a1afc6")); _root.AddChild(_status);
-var controls = new HBoxContainer { AnchorLeft = 1, AnchorRight = 1, AnchorTop = 1, AnchorBottom = 1, OffsetLeft = -455, OffsetRight = -24, OffsetTop = -62, OffsetBottom = -20 };
-_root.AddChild(controls);
-Button(controls, "CAMERA [C]", () => Game.Camera.Mode = (Game.Camera.Mode + 1) % 3);
-Button(controls, "RESET [R]", () => Game.Reset());
-Button(controls, "MENU [ESC]", () => { if (Game.Started) Game.TogglePause(); else ShowMenu(); });
-_menu = new PanelContainer { AnchorLeft = .5f, AnchorRight = .5f, AnchorTop = .5f, AnchorBottom = .5f, OffsetLeft = -295, OffsetRight = 295, OffsetTop = -280, OffsetBottom = 280 };
-_menu.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = new Color(.045f, .06f, .09f, .96f), BorderColor = new("d4ac37"), BorderWidthTop = 2, ContentMarginLeft = 28, ContentMarginRight = 28, ContentMarginTop = 20, ContentMarginBottom = 20 });
-_root.AddChild(_menu);
-var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-_menu.AddChild(scroll);
-_content = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-_content.AddThemeConstantOverride("separation", 8); scroll.AddChild(_content);
-CreateJointControls();
-
     }
 
     private static StyleBoxFlat CreateBox(Color bg, Color border, int radius = 8, int borderWidth = 1, int padX = 16, int padY = 12)
@@ -423,24 +398,7 @@ CreateJointControls();
     // =========================================================================
     public void ShowMenu()
     {
-Clear("BIOBUZZ SIMULATOR", "GODOT + C#  /  LOCAL DEVELOPMENT BUILD");
-Button(_content, "PLAY MATCH", () => Start(false));
-Button(_content, "PRACTICE", () => Start(true));
-Button(_content, "ROBOT CREATOR", RobotSetup);
-Button(_content, "IMPORT ROBOT (STL / URDF)", ImportSetup);
-Button(_content, "TWO PLAYERS: " + (Game.TwoPlayers ? "ON" : "OFF"), () => { Game.TwoPlayers = !Game.TwoPlayers; ShowMenu(); });
-Button(_content, "SETTINGS", Settings);
-Button(_content, "HOW TO PLAY", Help);
-Button(_content, "ACCURACY / PORT STATUS", Accuracy);
-Button(_content, "QUIT", () => GetTree().Quit());
-}
-private void Start(bool practice) { Game.Practice = practice; Game.Reset(); _menu.Visible = false; }
-public void ShowResults()
-{
-    Clear("MATCH COMPLETE", $"RED {Game.RedScore}   /   BLUE {Game.BlueScore}");
-    Button(_content, "PLAY AGAIN", () => Start(false));
-    Button(_content, "MAIN MENU", () => { Game.Started = false; ShowMenu(); });
-
+        NavigateTo(ScreenType.Main, true);
     }
 
     public void ShowPause(bool paused)
@@ -502,60 +460,199 @@ public void ShowResults()
 
     private void ClearDialog(string title, string subtitle = "")
     {
-private void BuildRobotCreator()
-{
-    _draft ??= Game.Profile.Copy();
-    Clear("ROBOT CREATOR", "Local profile • Apply restarts the scene");
-    if (_draft.Imported == null)
-    {
-        Slider("Width (cm)", 25, 45.72, _draft.WidthCm, v => _draft.WidthCm = (float)v);
-        Slider("Length (cm)", 25, 45.72, _draft.LengthCm, v => _draft.LengthCm = (float)v);
+        foreach (var child in _dialogBody.GetChildren())
+        {
+            _dialogBody.RemoveChild(child);
+            child.QueueFree();
+        }
+        _dialogTitle.Text = title.ToUpperInvariant();
+        _dialogSubtitle.Text = subtitle;
+        _dialogSubtitle.Visible = !string.IsNullOrEmpty(subtitle);
+        _modalScrim.Visible = true;
+        _dialogPanel.Visible = true;
+        _dialogScroll.ScrollVertical = 0;
     }
-    Button(_content, _draft.Imported == null ? "IMPORT FUSION / STL ROBOT" : "EDIT IMPORTED STL ROBOT", ImportSetup);
-    Slider("Speed (m/s)", .3, 3, _draft.Speed, v => _draft.Speed = (float)v);
-    Slider("Acceleration (m/s²)", .5, 8, _draft.Acceleration, v => _draft.Acceleration = (float)v);
-    Slider("Turn speed (rad/s)", .5, 6, _draft.TurnSpeed, v => _draft.TurnSpeed = (float)v);
-    Button(_content, $"TURRETS: {_draft.Turrets}  /  INTAKES: {_draft.Intakes}", () => { _draft.Turrets = _draft.Turrets % 3 + 1; RobotSetup(); });
-    Button(_content, "TOGGLE SECOND INTAKE", () => { _draft.Intakes = 3 - _draft.Intakes; RobotSetup(); });
-    Button(_content, "SAVE + APPLY", () => {
-        try { _draft.Save(); Game.Profile = _draft; Game.Reset(); }
-        catch (Exception ex) { Game.Status = "Cannot apply robot: " + ex.Message; }
-    });
-}
 
-        });
-
-        CreateButton(modesCard, "PLAY FULL MATCH (158S)", () =>
+    private void RenderCurrentScreen()
+    {
+        switch (_currentScreen)
         {
-            Game.TrainingGround = false;
-            Game.AutonomousDrill = false;
-            StartMatch(false);
-        });
+            case ScreenType.Main:
+                BuildMainMenu();
+                break;
+            case ScreenType.Pause:
+                BuildPauseMenu();
+                break;
+            case ScreenType.RobotCreator:
+                BuildRobotCreator();
+                break;
+            case ScreenType.AutonomousPathing:
+                BuildAutonomousPathing();
+                break;
+            case ScreenType.Settings:
+                BuildSettings();
+                break;
+            case ScreenType.Help:
+                BuildHelp();
+                break;
+            case ScreenType.Results:
+                BuildResults();
+                break;
+            default:
+                CloseMenu();
+                break;
+        }
 
-        CreateButton(modesCard, "FREE PRACTICE ARENA", () =>
+        CallDeferred(MethodName.FocusFirstInteractiveControl);
+    }
+
+    private void FocusFirstInteractiveControl()
+    {
+        foreach (var node in _dialogBody.GetChildren())
         {
-            Game.TrainingGround = false;
-            Game.AutonomousDrill = false;
-            StartMatch(true);
-        });
+            if (node is Button btn && btn.IsVisibleInTree() && !btn.Disabled)
+            {
+                btn.GrabFocus();
+                return;
+            }
+            if (node is Container container)
+            {
+                foreach (var sub in container.GetChildren())
+                {
+                    if (sub is Button subBtn && subBtn.IsVisibleInTree() && !subBtn.Disabled)
+                    {
+                        subBtn.GrabFocus();
+                        return;
+                    }
+                }
+            }
+        }
+    }
 
-        // Navigation & Tools Card (Clean 2-Column Grid)
+    private Button CreateModeCard(GridContainer parent, string badge, Color accentColor, string title, string description, string tag, Action action, bool primary = false)
+    {
+        var button = new Button
+        {
+            CustomMinimumSize = new Vector2(390, 145),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            FocusMode = Control.FocusModeEnum.All
+        };
+
+        var cardNormal = CreateBox(primary ? new Color(0.09f, 0.12f, 0.18f, 0.95f) : CardBg, primary ? Gold : BtnNormalBorder, 10, primary ? 2 : 1, 18, 14);
+        var cardHover = CreateBox(new Color(0.12f, 0.16f, 0.24f, 0.98f), accentColor, 10, 2, 18, 14);
+        var cardPressed = CreateBox(new Color(0.06f, 0.08f, 0.12f, 0.98f), accentColor, 10, 2, 18, 14);
+
+        button.AddThemeStyleboxOverride("normal", cardNormal);
+        button.AddThemeStyleboxOverride("hover", cardHover);
+        button.AddThemeStyleboxOverride("pressed", cardPressed);
+        button.AddThemeStyleboxOverride("focus", cardHover);
+
+        var vbox = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        vbox.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        vbox.OffsetLeft = 18; vbox.OffsetTop = 14; vbox.OffsetRight = -18; vbox.OffsetBottom = -14;
+        vbox.AddThemeConstantOverride("separation", 6);
+        button.AddChild(vbox);
+
+        var topRow = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        var badgeLabel = CreateBadge(badge, new Color(accentColor.R, accentColor.G, accentColor.B, 0.20f), accentColor, 13);
+        badgeLabel.CustomMinimumSize = new Vector2(140, 26);
+        topRow.AddChild(badgeLabel);
+
+        var spacer = new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
+        topRow.AddChild(spacer);
+
+        var tagLabel = new Label { Text = tag };
+        tagLabel.AddThemeFontSizeOverride("font_size", 14);
+        tagLabel.AddThemeColorOverride("font_color", TextMuted);
+        topRow.AddChild(tagLabel);
+        vbox.AddChild(topRow);
+
+        var titleLabel = new Label { Text = title };
+        titleLabel.AddThemeFontSizeOverride("font_size", 20);
+        titleLabel.AddThemeColorOverride("font_color", primary ? Gold : TextWhite);
+        vbox.AddChild(titleLabel);
+
+        var descLabel = new Label
+        {
+            Text = description,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        descLabel.AddThemeFontSizeOverride("font_size", 14);
+        descLabel.AddThemeColorOverride("font_color", TextMuted);
+        vbox.AddChild(descLabel);
+
+        button.Pressed += action;
+        parent.AddChild(button);
+        return button;
+    }
+
+    // =========================================================================
+    // SCREEN: MAIN MENU
+    // =========================================================================
+    private void BuildMainMenu()
+    {
+        ClearDialog("BIOBUZZ SIMULATOR", "GODOT + C#  /  2026 BIOBUZZ AUTONOMOUS PLATFORM");
+
+        // Primary Game Modes Card (2x2 Matrix)
+        var modesCard = CreateCard(_dialogBody, "MATCH & TRAINING MODES");
+        var modesGrid = new GridContainer { Columns = 2 };
+        modesGrid.AddThemeConstantOverride("h_separation", 16);
+        modesGrid.AddThemeConstantOverride("v_separation", 14);
+        modesCard.AddChild(modesGrid);
+
+        CreateModeCard(modesGrid, "⚡ AI TRAINING", Gold, "AI TRAINING GROUND",
+            "Dedicated reinforcement learning & sandbox grounds for training autonomous navigation and scoring policies.",
+            "[TRAIN]", () =>
+            {
+                Game.TrainingGround = true;
+                Game.AutonomousDrill = false;
+                Game.Practice = true;
+                Game.Reset();
+                CloseMenu();
+            }, true);
+
+        CreateModeCard(modesGrid, "⏱ 30-SEC AUTO", new("3b9ee0"), "30S AUTONOMOUS DRILL",
+            "Drill the official 30-second autonomous period with waypoint trajectory following and scoring.",
+            "[AUTO]", () =>
+            {
+                Game.TrainingGround = false;
+                Game.AutonomousDrill = true;
+                StartMatch(false);
+            });
+
+        CreateModeCard(modesGrid, "🏆 FULL MATCH", Green, "PLAY FULL MATCH (158S)",
+            "Official FTC BioBuzz rules: 30s Auto, 8s Transition, and 120s TeleOp with live alliance scoring.",
+            "[MATCH]", () =>
+            {
+                Game.TrainingGround = false;
+                Game.AutonomousDrill = false;
+                StartMatch(false);
+            });
+
+        CreateModeCard(modesGrid, "🎮 FREE SANDBOX", Purple, "FREE PRACTICE ARENA",
+            "Unlimited sandbox driving: test robot maneuvers, spawn game pieces, and test scoring mechanisms.",
+            "[PRACTICE]", () =>
+            {
+                Game.TrainingGround = false;
+                Game.AutonomousDrill = false;
+                StartMatch(true);
+            });
+
+        // Navigation & Tools Card
         var toolsCard = CreateCard(_dialogBody, "CONFIGURATION & TOOLS");
-        var toolsGrid = new GridContainer { Columns = 2 };
-        toolsGrid.AddThemeConstantOverride("h_separation", 14);
-        toolsGrid.AddThemeConstantOverride("v_separation", 12);
-        toolsCard.AddChild(toolsGrid);
+        var toolsRow = new HBoxContainer();
+        toolsRow.AddThemeConstantOverride("separation", 14);
+        toolsCard.AddChild(toolsRow);
 
-        var rBtn = CreateButton(toolsGrid, "ROBOT CREATOR", () => NavigateTo(ScreenType.RobotCreator));
+        var rBtn = CreateButton(toolsRow, "🛠 ROBOT WORKSHOP (EDIT / IMPORT)", () => NavigateTo(ScreenType.RobotCreator), true);
         rBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
-        var pBtn = CreateButton(toolsGrid, "AUTONOMOUS PATH EDITOR", () => NavigateTo(ScreenType.AutonomousPathing));
-        pBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-
-        var sBtn = CreateButton(toolsGrid, "SETTINGS", () => NavigateTo(ScreenType.Settings));
+        var sBtn = CreateButton(toolsRow, "⚙ SETTINGS", () => NavigateTo(ScreenType.Settings));
         sBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
-        var hBtn = CreateButton(toolsGrid, "HOW TO PLAY", () => NavigateTo(ScreenType.Help));
+        var hBtn = CreateButton(toolsRow, "📖 HOW TO PLAY & CONTROLS", () => NavigateTo(ScreenType.Help));
         hBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
         // Footer Row
@@ -657,6 +754,7 @@ private void BuildRobotCreator()
         _dialogBody.AddChild(subRow);
 
         CreateButton(subRow, "ROBOT SETUP", () => NavigateTo(ScreenType.RobotCreator)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        CreateButton(subRow, "IMPORT ROBOT", ImportSetup).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         CreateButton(subRow, "AI TRAINING GROUND", () =>
         {
             Game.TrainingGround = true;
@@ -685,97 +783,188 @@ private void BuildRobotCreator()
     // =========================================================================
     private void BuildRobotCreator()
     {
-        ClearDialog("ROBOT CREATOR", "Local profile • Apply restarts the scene");
+        ClearDialog("ROBOT WORKSHOP", "Configure makeshift parametric chassis or import custom CAD robot (URDF / STL)");
 
         _draft ??= Game.Profile.Copy();
         var profile = _draft;
+        bool isCad = profile.Imported != null;
 
-        // FTC Sizing Compliance Card
-        var sizingCard = CreateCard(_dialogBody, "FTC 18\" SIZING COMPLIANCE");
-        var sizingRow = new HBoxContainer();
-        sizingRow.AddThemeConstantOverride("separation", 16);
-        sizingCard.AddChild(sizingRow);
+        // Current Active Configuration Banner & Mode Switcher
+        var activeCard = CreateCard(_dialogBody, "ACTIVE ROBOT CONFIGURATION");
+        var activeRow = new HBoxContainer();
+        activeRow.AddThemeConstantOverride("separation", 14);
+        activeCard.AddChild(activeRow);
 
-        bool isLegal = profile.WidthCm <= 45.721f && profile.LengthCm <= 45.721f;
-        var legalBadge = CreateBadge(isLegal ? "SIZE OK" : "OVERSIZED !", isLegal ? Green : Red, Colors.White, 15);
-        legalBadge.CustomMinimumSize = new(130, 32);
-        sizingRow.AddChild(legalBadge);
+        var modeBadge = CreateBadge(isCad ? $"CAD MODEL ({profile.Imported.SourceFormat.ToUpper()})" : "PARAMETRIC MAKESHIFT",
+            isCad ? Green : Gold, Colors.White, 15);
+        modeBadge.CustomMinimumSize = new(210, 32);
+        activeRow.AddChild(modeBadge);
 
-        var sizingLabel = new Label
+        var modeDesc = new Label
         {
-            Text = $"{profile.WidthCm:0.0} x {profile.LengthCm:0.0} cm  ({profile.WidthCm / 2.54f:0.0}\" x {profile.LengthCm / 2.54f:0.0}\")",
+            Text = isCad ? $"{profile.Name}  •  {profile.Imported.Parts.Count} STL part(s)  •  {profile.Imported.Joints.Count} joint(s)"
+                         : $"{profile.Name}  •  {profile.WidthCm:0.0} × {profile.LengthCm:0.0} cm  •  Speed: {profile.Speed:0.0} m/s",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
-        sizingLabel.AddThemeFontSizeOverride("font_size", 18);
-        sizingLabel.AddThemeColorOverride("font_color", TextWhite);
-        sizingRow.AddChild(sizingLabel);
+        modeDesc.AddThemeFontSizeOverride("font_size", 16);
+        modeDesc.AddThemeColorOverride("font_color", TextWhite);
+        activeRow.AddChild(modeDesc);
 
-        // Architecture Presets Card
-        var presetsCard = CreateCard(_dialogBody, "PRESETS");
-        var presetsRow = new HBoxContainer();
-        presetsRow.AddThemeConstantOverride("separation", 10);
-        presetsCard.AddChild(presetsRow);
+        var switchRow = new HBoxContainer();
+        switchRow.AddThemeConstantOverride("separation", 12);
+        activeCard.AddChild(switchRow);
 
-        void ApplyPreset(string name, float w, float l, float spd, float acc, float trn, int tur, int intk)
+        var btnParametric = CreateButton(switchRow, "⚙ 1. PARAMETRIC CHASSIS BUILDER", () =>
         {
-            profile.Name = name;
-            profile.WidthCm = w;
-            profile.LengthCm = l;
-            profile.Speed = spd;
-            profile.Acceleration = acc;
-            profile.TurnSpeed = trn;
-            profile.Turrets = tur;
-            profile.Intakes = intk;
-            BuildRobotCreator();
+            if (profile.Imported != null)
+            {
+                profile.Imported = null;
+                BuildRobotCreator();
+            }
+        }, !isCad);
+        btnParametric.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+        var btnCad = CreateButton(switchRow, "📥 2. IMPORT CAD ROBOT (URDF / STL)", ImportSetup, isCad);
+        btnCad.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+        if (!isCad)
+        {
+            // FTC Sizing Compliance Card
+            var sizingCard = CreateCard(_dialogBody, "FTC 18\" SIZING COMPLIANCE");
+            var sizingRow = new HBoxContainer();
+            sizingRow.AddThemeConstantOverride("separation", 16);
+            sizingCard.AddChild(sizingRow);
+
+            bool isLegal = profile.WidthCm <= 45.721f && profile.LengthCm <= 45.721f;
+            var legalBadge = CreateBadge(isLegal ? "SIZE OK" : "OVERSIZED !", isLegal ? Green : Red, Colors.White, 15);
+            legalBadge.CustomMinimumSize = new(130, 32);
+            sizingRow.AddChild(legalBadge);
+
+            var sizingLabel = new Label
+            {
+                Text = $"{profile.WidthCm:0.0} x {profile.LengthCm:0.0} cm  ({profile.WidthCm / 2.54f:0.0}\" x {profile.LengthCm / 2.54f:0.0}\")",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+            };
+            sizingLabel.AddThemeFontSizeOverride("font_size", 18);
+            sizingLabel.AddThemeColorOverride("font_color", TextWhite);
+            sizingRow.AddChild(sizingLabel);
+
+            // Architecture Presets Card
+            var presetsCard = CreateCard(_dialogBody, "PRESETS");
+            var presetsRow = new HBoxContainer();
+            presetsRow.AddThemeConstantOverride("separation", 10);
+            presetsCard.AddChild(presetsRow);
+
+            void ApplyPreset(string name, float w, float l, float spd, float acc, float trn, int tur, int intk)
+            {
+                profile.Name = name;
+                profile.WidthCm = w;
+                profile.LengthCm = l;
+                profile.Speed = spd;
+                profile.Acceleration = acc;
+                profile.TurnSpeed = trn;
+                profile.Turrets = tur;
+                profile.Intakes = intk;
+                BuildRobotCreator();
+            }
+
+            CreateButton(presetsRow, "FTC Max 18\"", () => ApplyPreset("Max Swerve", 45.72f, 45.72f, 1.8f, 3.5f, 3.2f, 1, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            CreateButton(presetsRow, "Agile Compact", () => ApplyPreset("Agile Runner", 35.0f, 35.0f, 2.5f, 5.0f, 4.5f, 1, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            CreateButton(presetsRow, "Sniper Turret", () => ApplyPreset("Sniper Turret", 45.72f, 45.72f, 1.4f, 2.8f, 2.5f, 2, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            CreateButton(presetsRow, "Dual Harvester", () => ApplyPreset("Dual Intake", 42.0f, 42.0f, 1.6f, 3.2f, 3.0f, 1, 2)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+            // Sliders Card
+            var slidersCard = CreateCard(_dialogBody, "DRIVETRAIN & DIMENSIONS");
+
+            void UpdateSizing()
+            {
+                bool ok = profile.WidthCm <= 45.721f && profile.LengthCm <= 45.721f;
+                legalBadge.Text = ok ? "SIZE OK" : "OVERSIZED !";
+                legalBadge.AddThemeStyleboxOverride("normal", CreateBox(ok ? Green : Red, Colors.Transparent, 6, 0, 10, 4));
+                sizingLabel.Text = $"{profile.WidthCm:0.0} x {profile.LengthCm:0.0} cm  ({profile.WidthCm / 2.54f:0.0}\" x {profile.LengthCm / 2.54f:0.0}\")";
+            }
+
+            CreateSlider(slidersCard, "Width (cm)", 25.0, 45.72, 0.25, profile.WidthCm, v =>
+            {
+                profile.WidthCm = (float)v;
+                UpdateSizing();
+            }, v => $"{v:0.00} cm ({v / 2.54:0.0}\")");
+
+            CreateSlider(slidersCard, "Length (cm)", 25.0, 45.72, 0.25, profile.LengthCm, v =>
+            {
+                profile.LengthCm = (float)v;
+                UpdateSizing();
+            }, v => $"{v:0.00} cm ({v / 2.54:0.0}\")");
+
+            CreateSlider(slidersCard, "Speed (m/s)", 0.3, 3.0, 0.05, profile.Speed, v =>
+            {
+                profile.Speed = (float)v;
+            }, v => $"{v:0.00} m/s ({v / 0.0254:0} in/s)");
+
+            CreateSlider(slidersCard, "Acceleration (m/s²)", 0.5, 8.0, 0.1, profile.Acceleration, v =>
+            {
+                profile.Acceleration = (float)v;
+            }, v => $"{v:0.00} m/s²");
+
+            CreateSlider(slidersCard, "Turn speed (rad/s)", 0.5, 6.0, 0.1, profile.TurnSpeed, v =>
+            {
+                profile.TurnSpeed = (float)v;
+            }, v => $"{v:0.00} rad/s ({Mathf.RadToDeg((float)v):0}°/s)");
+
+            // Prompt Card for CAD Import
+            var cadPromptCard = CreateCard(_dialogBody, "CUSTOM CAD MODEL");
+            var cadPromptLabel = new Label
+            {
+                Text = "Have an existing robot model designed in Onshape, Fusion 360, or SolidWorks?\nImport your robot as URDF (recommended) or STL meshes with articulated joints.",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart
+            };
+            cadPromptLabel.AddThemeFontSizeOverride("font_size", 15);
+            cadPromptLabel.AddThemeColorOverride("font_color", TextMuted);
+            cadPromptCard.AddChild(cadPromptLabel);
+
+            var cadPromptBtn = CreateButton(cadPromptCard, "OPEN CAD ROBOT IMPORTER (URDF / STL) ➔", ImportSetup);
+            cadPromptBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         }
-
-        CreateButton(presetsRow, "FTC Max 18\"", () => ApplyPreset("Max Swerve", 45.72f, 45.72f, 1.8f, 3.5f, 3.2f, 1, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        CreateButton(presetsRow, "Agile Compact", () => ApplyPreset("Agile Runner", 35.0f, 35.0f, 2.5f, 5.0f, 4.5f, 1, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        CreateButton(presetsRow, "Sniper Turret", () => ApplyPreset("Sniper Turret", 45.72f, 45.72f, 1.4f, 2.8f, 2.5f, 2, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        CreateButton(presetsRow, "Dual Harvester", () => ApplyPreset("Dual Intake", 42.0f, 42.0f, 1.6f, 3.2f, 3.0f, 1, 2)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-
-        // Sliders Card
-        var slidersCard = CreateCard(_dialogBody, "DRIVETRAIN & DIMENSIONS");
-
-        void UpdateSizing()
+        else
         {
-            bool ok = profile.WidthCm <= 45.721f && profile.LengthCm <= 45.721f;
-            legalBadge.Text = ok ? "SIZE OK" : "OVERSIZED !";
-            legalBadge.AddThemeStyleboxOverride("normal", CreateBox(ok ? Green : Red, Colors.Transparent, 6, 0, 10, 4));
-            sizingLabel.Text = $"{profile.WidthCm:0.0} x {profile.LengthCm:0.0} cm  ({profile.WidthCm / 2.54f:0.0}\" x {profile.LengthCm / 2.54f:0.0}\")";
+            // CAD Model Management Card
+            var cadCard = CreateCard(_dialogBody, "CAD MODEL DETAILS & JOINTS");
+            var cadActionRow = new HBoxContainer();
+            cadActionRow.AddThemeConstantOverride("separation", 12);
+            cadCard.AddChild(cadActionRow);
+
+            var editCadBtn = CreateButton(cadActionRow, "EDIT CAD & MECHANISM JOINTS ➔", ImportSetup, true);
+            editCadBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+            var revertBtn = CreateButton(cadActionRow, "SWITCH BACK TO PARAMETRIC BUILD", () =>
+            {
+                profile.Imported = null;
+                BuildRobotCreator();
+            });
+            revertBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+            // Sliders Card for Drive Physics Tuning
+            var tuningCard = CreateCard(_dialogBody, "DRIVETRAIN DYNAMICS");
+
+            CreateSlider(tuningCard, "Speed (m/s)", 0.3, 3.0, 0.05, profile.Speed, v =>
+            {
+                profile.Speed = (float)v;
+            }, v => $"{v:0.00} m/s ({v / 0.0254:0} in/s)");
+
+            CreateSlider(tuningCard, "Acceleration (m/s²)", 0.5, 8.0, 0.1, profile.Acceleration, v =>
+            {
+                profile.Acceleration = (float)v;
+            }, v => $"{v:0.00} m/s²");
+
+            CreateSlider(tuningCard, "Turn speed (rad/s)", 0.5, 6.0, 0.1, profile.TurnSpeed, v =>
+            {
+                profile.TurnSpeed = (float)v;
+            }, v => $"{v:0.00} rad/s ({Mathf.RadToDeg((float)v):0}°/s)");
         }
-
-        CreateSlider(slidersCard, "Width (cm)", 25.0, 45.72, 0.25, profile.WidthCm, v =>
-        {
-            profile.WidthCm = (float)v;
-            UpdateSizing();
-        }, v => $"{v:0.00} cm ({v / 2.54:0.0}\")");
-
-        CreateSlider(slidersCard, "Length (cm)", 25.0, 45.72, 0.25, profile.LengthCm, v =>
-        {
-            profile.LengthCm = (float)v;
-            UpdateSizing();
-        }, v => $"{v:0.00} cm ({v / 2.54:0.0}\")");
-
-        CreateSlider(slidersCard, "Speed (m/s)", 0.3, 3.0, 0.05, profile.Speed, v =>
-        {
-            profile.Speed = (float)v;
-        }, v => $"{v:0.00} m/s ({v / 0.0254:0} in/s)");
-
-        CreateSlider(slidersCard, "Acceleration (m/s²)", 0.5, 8.0, 0.1, profile.Acceleration, v =>
-        {
-            profile.Acceleration = (float)v;
-        }, v => $"{v:0.00} m/s²");
-
-        CreateSlider(slidersCard, "Turn speed (rad/s)", 0.5, 6.0, 0.1, profile.TurnSpeed, v =>
-        {
-            profile.TurnSpeed = (float)v;
-        }, v => $"{v:0.00} rad/s ({Mathf.RadToDeg((float)v):0}°/s)");
 
         // Subsystems (Turrets & Intakes)
         var subCard = CreateCard(_dialogBody, "SUBSYSTEMS");
 
-        // Turret selection
         var turretRow = new HBoxContainer();
         turretRow.AddThemeConstantOverride("separation", 12);
         var tLbl = new Label { Text = "Turrets:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -793,7 +982,6 @@ private void BuildRobotCreator()
         }
         subCard.AddChild(turretRow);
 
-        // Intake selection
         var intakeRow = new HBoxContainer();
         intakeRow.AddThemeConstantOverride("separation", 12);
         var iLbl = new Label { Text = "Intakes:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -940,12 +1128,57 @@ private void BuildRobotCreator()
     // =========================================================================
     private void BuildSettings()
     {
-        ClearDialog("SETTINGS", "");
+        ClearDialog("SETTINGS", "Display, Camera, Gameplay, and Configurable Controls");
 
-        // Camera Settings
+        // 1. Display & Graphics Settings
+        var dispCard = CreateCard(_dialogBody, "DISPLAY & GRAPHICS");
+
+        var dispGrid = new GridContainer { Columns = 2 };
+        dispGrid.AddThemeConstantOverride("h_separation", 20);
+        dispGrid.AddThemeConstantOverride("v_separation", 10);
+        dispCard.AddChild(dispGrid);
+
+        // Fullscreen Toggle
+        bool isFullscreen = DisplayServer.WindowGetMode() == DisplayServer.WindowMode.Fullscreen;
+        var fsLbl = new Label { Text = "Display Mode:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        fsLbl.AddThemeFontSizeOverride("font_size", 18);
+        dispGrid.AddChild(fsLbl);
+
+        var fsBtn = CreateButton(dispGrid, isFullscreen ? "FULLSCREEN [ALT+ENTER]" : "WINDOWED", () =>
+        {
+            DisplayServer.WindowSetMode(isFullscreen ? DisplayServer.WindowMode.Windowed : DisplayServer.WindowMode.Fullscreen);
+            BuildSettings();
+        }, isFullscreen);
+        fsBtn.CustomMinimumSize = new(240, 44);
+
+        // V-Sync Toggle
+        bool isVsync = DisplayServer.WindowGetVsyncMode() != DisplayServer.VSyncMode.Disabled;
+        var vsyncLbl = new Label { Text = "Vertical Sync (V-Sync):", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        vsyncLbl.AddThemeFontSizeOverride("font_size", 18);
+        dispGrid.AddChild(vsyncLbl);
+
+        var vsyncBtn = CreateButton(dispGrid, isVsync ? "ENABLED (60 FPS CAP)" : "DISABLED (MAX FPS)", () =>
+        {
+            DisplayServer.WindowSetVsyncMode(isVsync ? DisplayServer.VSyncMode.Disabled : DisplayServer.VSyncMode.Enabled);
+            BuildSettings();
+        }, isVsync);
+        vsyncBtn.CustomMinimumSize = new(240, 44);
+
+        // Trajectory Line Toggle
+        var trajLbl = new Label { Text = "Shot Trajectory Prediction:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        trajLbl.AddThemeFontSizeOverride("font_size", 18);
+        dispGrid.AddChild(trajLbl);
+
+        var trajBtn = CreateButton(dispGrid, Game.ShowTrajectory ? "VISIBLE (TRAJECTORY LINE ON)" : "HIDDEN (REALISTIC DRILL)", () =>
+        {
+            Game.ShowTrajectory = !Game.ShowTrajectory;
+            BuildSettings();
+        }, Game.ShowTrajectory);
+        trajBtn.CustomMinimumSize = new(240, 44);
+
+        // 2. Camera View & Perspectives
         var camCard = CreateCard(_dialogBody, "CAMERA VIEW & PERSPECTIVES");
 
-        // Mode row
         var modeRow = new HBoxContainer();
         modeRow.AddThemeConstantOverride("separation", 12);
         var modeLbl = new Label { Text = "Camera Mode:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -982,21 +1215,105 @@ private void BuildRobotCreator()
         });
         resetCamBtn.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
 
-        // Two Players Setting
-        var playCard = CreateCard(_dialogBody, "MULTIPLAYER SETTINGS");
-        var playRow = new HBoxContainer();
-        playRow.AddThemeConstantOverride("separation", 14);
-        playCard.AddChild(playRow);
+        // 3. Gameplay & Match Simulation
+        var gameCard = CreateCard(_dialogBody, "GAMEPLAY & MATCH SIMULATION");
+        var gameGrid = new GridContainer { Columns = 2 };
+        gameGrid.AddThemeConstantOverride("h_separation", 20);
+        gameGrid.AddThemeConstantOverride("v_separation", 10);
+        gameCard.AddChild(gameGrid);
 
-        var pLbl = new Label { Text = "Local Two Players:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var aiLbl = new Label { Text = "Opponent Alliance AI:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        aiLbl.AddThemeFontSizeOverride("font_size", 18);
+        gameGrid.AddChild(aiLbl);
+
+        var aiBtn = CreateButton(gameGrid, Game.OpponentAi ? "ACTIVE (DEFEND & SCORE)" : "DISABLED (PRACTICE SOLO)", () =>
+        {
+            Game.OpponentAi = !Game.OpponentAi;
+            BuildSettings();
+        }, Game.OpponentAi);
+        aiBtn.CustomMinimumSize = new(240, 44);
+
+        var pLbl = new Label { Text = "Local Two Players Mode:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         pLbl.AddThemeFontSizeOverride("font_size", 18);
-        playRow.AddChild(pLbl);
+        gameGrid.AddChild(pLbl);
 
-        CreateButton(playRow, Game.TwoPlayers ? "ON" : "OFF", () =>
+        var pBtn = CreateButton(gameGrid, Game.TwoPlayers ? "ON (PLAYER 2 ARROW KEYS)" : "OFF (PLAYER 1 ONLY)", () =>
         {
             Game.TwoPlayers = !Game.TwoPlayers;
             BuildSettings();
-        }, Game.TwoPlayers).CustomMinimumSize = new(140, 44);
+        }, Game.TwoPlayers);
+        pBtn.CustomMinimumSize = new(240, 44);
+
+        // 4. Configurable Controls & Key Remapping
+        var controlsCard = CreateCard(_dialogBody, "CONTROLS & KEY REMAPPING");
+
+        if (_rebindingAction != null)
+        {
+            var alert = CreateBadge($"► PRESS ANY KEY TO REBIND [{_rebindingAction.ToUpperInvariant()}] (OR ESC TO CANCEL) ◄", Orange, Colors.White, 16);
+            alert.CustomMinimumSize = new(0, 36);
+            controlsCard.AddChild(alert);
+        }
+
+        var controlsHint = new Label
+        {
+            Text = "Click any action key below to remap it, then press the desired key on your keyboard. Press ESC to cancel.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        controlsHint.AddThemeFontSizeOverride("font_size", 15);
+        controlsHint.AddThemeColorOverride("font_color", TextMuted);
+        controlsCard.AddChild(controlsHint);
+
+        var keysGrid = new GridContainer { Columns = 2 };
+        keysGrid.AddThemeConstantOverride("h_separation", 24);
+        keysGrid.AddThemeConstantOverride("v_separation", 8);
+        controlsCard.AddChild(keysGrid);
+
+        (string Id, string ActionName, Key CurrentKey)[] actionKeys =
+        {
+            ("Forward", "Drive Forward", Game.KeyForward),
+            ("Backward", "Drive Backward", Game.KeyBackward),
+            ("Left", "Strafe Left", Game.KeyLeft),
+            ("Right", "Strafe Right", Game.KeyRight),
+            ("TurnLeft", "Rotate Left", Game.KeyTurnLeft),
+            ("TurnRight", "Rotate Right", Game.KeyTurnRight),
+            ("Intake", "Intake (Hold)", Game.KeyIntake),
+            ("Launch", "Launch Game Piece", Game.KeyLaunch),
+            ("Target", "Toggle Target (Hive/Flower)", Game.KeyTarget),
+            ("Camera", "Switch Camera View", Game.KeyCamera),
+            ("Human", "Human Player Nectar", Game.KeyHuman),
+            ("Extract", "Extract Flower Bottom", Game.KeyExtract),
+            ("Reset", "Reset Match Simulation", Game.KeyReset)
+        };
+
+        foreach (var (id, actionName, currentKey) in actionKeys)
+        {
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 10);
+            keysGrid.AddChild(row);
+
+            var aLbl = new Label { Text = actionName, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            aLbl.AddThemeFontSizeOverride("font_size", 16);
+            aLbl.AddThemeColorOverride("font_color", TextWhite);
+            row.AddChild(aLbl);
+
+            bool isRebindingThis = _rebindingAction == id;
+            string keyText = isRebindingThis ? "► PRESS KEY ◄" : $"[ {GetKeyName(currentKey)} ]";
+            var kBtn = CreateButton(row, keyText, () =>
+            {
+                _rebindingAction = isRebindingThis ? null : id;
+                BuildSettings();
+            }, isRebindingThis);
+            kBtn.CustomMinimumSize = new(130, 38);
+            kBtn.AddThemeFontSizeOverride("font_size", 15);
+        }
+
+        var resetKeysBtn = CreateButton(controlsCard, "RESET ALL KEYS TO DEFAULTS (WASD)", () =>
+        {
+            Game.ResetKeyBindings();
+            _rebindingAction = null;
+            BuildSettings();
+        });
+        resetKeysBtn.CustomMinimumSize = new(0, 44);
 
         // Back
         var footer = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
@@ -1010,7 +1327,7 @@ private void BuildRobotCreator()
     // =========================================================================
     private void BuildHelp()
     {
-        ClearDialog("HOW TO PLAY", "");
+        ClearDialog("HOW TO PLAY", "Official 2026 BioBuzz FTC Controls and Instructions");
 
         void AddCategory(string title, (string Key, string Desc)[] bindings)
         {
@@ -1036,19 +1353,19 @@ private void BuildRobotCreator()
 
         AddCategory("ROBOT DRIVING", new[]
         {
-            ("WASD", "Camera-relative ground movement"),
-            ("Q / E", "Rotate robot left / right"),
+            ($"{GetKeyName(Game.KeyForward)} / {GetKeyName(Game.KeyLeft)} / {GetKeyName(Game.KeyBackward)} / {GetKeyName(Game.KeyRight)}", "Camera-relative ground movement"),
+            ($"{GetKeyName(Game.KeyTurnLeft)} / {GetKeyName(Game.KeyTurnRight)}", "Rotate robot left / right"),
             ("Gamepad Left Stick", "Analog translation relative to camera"),
             ("Gamepad Right Stick X", "Analog rotation")
         });
 
         AddCategory("SUBSYSTEMS & GAME PIECES", new[]
         {
-            ("SHIFT / J", "Hold to run intake (collects up to 4 pieces)"),
-            ("SPACE", "Launch game piece toward target"),
-            ("T", "Target HIVE / FLOWER toggle"),
-            ("K", "Extract bottom ball near FLOWER column"),
-            ("H", "Human player releases NECTAR piece"),
+            ($"{GetKeyName(Game.KeyIntake)} / J", "Hold to run intake (collects up to 4 pieces)"),
+            ($"{GetKeyName(Game.KeyLaunch)}", "Launch game piece toward target"),
+            ($"{GetKeyName(Game.KeyTarget)}", "Target HIVE / FLOWER toggle"),
+            ($"{GetKeyName(Game.KeyExtract)}", "Extract bottom ball near FLOWER column"),
+            ($"{GetKeyName(Game.KeyHuman)}", "Human player releases NECTAR piece"),
             ("B / N", "Quick-spawn POLLEN / NECTAR in practice")
         });
 
@@ -1063,11 +1380,11 @@ private void BuildRobotCreator()
 
         AddCategory("CAMERA & SYSTEM", new[]
         {
-            ("C", "Orbit / top / robot follower camera"),
+            ($"{GetKeyName(Game.KeyCamera)}", "Orbit / top / robot follower camera"),
             ("Middle/Right Drag", "Orbit camera view"),
             ("Shift + Middle Drag", "Pan field view"),
             ("Mouse Wheel", "Zoom camera in / out"),
-            ("R", "Reset match / simulation"),
+            ($"{GetKeyName(Game.KeyReset)}", "Reset match / simulation"),
             ("ESC", "Pause match / Open menu")
         });
 
@@ -1264,115 +1581,176 @@ private void BuildRobotCreator()
     // =========================================================================
     public override void _Process(double delta)
     {
-if (Game == null || Game.Player == null) return;
+        if (Game == null || Game.Player == null) return;
 
-UpdateJointControls();
+        UpdateJointControls();
 
-bool isMenuOpen = _currentScreen != ScreenType.None;
-_telemetryPanel.Visible = Game.Started && !isMenuOpen;
-_telemetryCard.Visible = Game.Started && !isMenuOpen;
-_controlsBar.Visible = !isMenuOpen;
-_statusToast.Visible = !isMenuOpen && !string.IsNullOrEmpty(Game.Status);
+        bool isMenuOpen = _currentScreen != ScreenType.None;
+        _telemetryPanel.Visible = Game.Started && !isMenuOpen;
+        _telemetryCard.Visible = Game.Started && !isMenuOpen;
+        _controlsBar.Visible = !isMenuOpen;
+        _statusToast.Visible = !isMenuOpen && !string.IsNullOrEmpty(Game.Status);
 
-_telemetryCard.TooltipText = $"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}";
-_statusToast.TooltipText = Game.Status;
+        _telemetryCard.TooltipText = $"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}" + (Game.Player.Rig == null ? "" : "\n" + Game.Player.Rig.MotorStatus);
+        _statusToast.TooltipText = Game.Status;
 
-if (_redScoreLabel != null) _redScoreLabel.Text = Game.RedScore.ToString();
-if (_blueScoreLabel != null) _blueScoreLabel.Text = Game.BlueScore.ToString();
-if (_red != null) _red.Text = $"RED  {Game.RedScore}"; if (_blue != null) _blue.Text = $"{Game.BlueScore}  BLUE";
+        _redScoreLabel.Text = Game.RedScore.ToString();
+        _blueScoreLabel.Text = Game.BlueScore.ToString();
 
-string phaseName;
-float timeLeft;
-Color phaseColor;
+        string phaseName;
+        float timeLeft;
+        Color phaseColor;
 
-if (Game.TrainingGround)
-{
-    phaseName = "AI TRAINING GROUND";
-    timeLeft = Game.Elapsed;
-    phaseColor = Gold;
-}
-else if (Game.Practice)
-{
-    phaseName = "PRACTICE ARENA";
-    timeLeft = Game.Elapsed;
-    phaseColor = Purple;
-}
-else if (Game.AutonomousDrill)
-{
-    phaseName = "30S AUTONOMOUS DRILL";
-    timeLeft = Mathf.Max(0, 30 - Game.Elapsed);
-    phaseColor = Gold;
-}
-else if (Game.Elapsed < 30)
-{
-    phaseName = "AUTONOMOUS PERIOD";
-    timeLeft = 30 - Game.Elapsed;
-    phaseColor = Gold;
-}
-else if (Game.Elapsed < 38)
-{
-    phaseName = "TRANSITION";
-    timeLeft = 38 - Game.Elapsed;
-    phaseColor = Orange;
-}
-else if (Game.Elapsed < 158)
-{
-    phaseName = "TELEOP PERIOD";
-    timeLeft = 158 - Game.Elapsed;
-    phaseColor = Green;
-}
-else
-{
-    phaseName = "MATCH COMPLETE";
-    timeLeft = 0;
-    phaseColor = Red;
-}
+        if (Game.TrainingGround)
+        {
+            phaseName = "AI TRAINING GROUND";
+            timeLeft = Game.Elapsed;
+            phaseColor = Gold;
+        }
+        else if (Game.Practice)
+        {
+            phaseName = "PRACTICE ARENA";
+            timeLeft = Game.Elapsed;
+            phaseColor = Purple;
+        }
+        else if (Game.AutonomousDrill)
+        {
+            phaseName = "30S AUTONOMOUS DRILL";
+            timeLeft = Mathf.Max(0, 30 - Game.Elapsed);
+            phaseColor = Gold;
+        }
+        else if (Game.Elapsed < 30)
+        {
+            phaseName = "AUTONOMOUS PERIOD";
+            timeLeft = 30 - Game.Elapsed;
+            phaseColor = Gold;
+        }
+        else if (Game.Elapsed < 38)
+        {
+            phaseName = "TRANSITION";
+            timeLeft = 38 - Game.Elapsed;
+            phaseColor = Orange;
+        }
+        else if (Game.Elapsed < 158)
+        {
+            phaseName = "TELEOP PERIOD";
+            timeLeft = 158 - Game.Elapsed;
+            phaseColor = Green;
+        }
+        else
+        {
+            phaseName = "MATCH COMPLETE";
+            timeLeft = 0;
+            phaseColor = Red;
+        }
 
-_phaseBadge.Text = phaseName;
-_phaseBadge.AddThemeColorOverride("font_color", phaseColor);
-_clockLabel.Text = $"{(int)timeLeft / 60}:{(int)timeLeft % 60:00}";
+        _phaseBadge.Text = phaseName;
+        _phaseBadge.AddThemeColorOverride("font_color", phaseColor);
+        _clockLabel.Text = $"{(int)timeLeft / 60}:{(int)timeLeft % 60:00}";
 
-if (_clock != null)
-{
-    string phase = Game.Practice ? "PRACTICE" : Game.Elapsed < 30 ? "AUTO" : Game.Elapsed < 38 ? "TRANSITION" : Game.Elapsed < 158 ? "TELEOP" : "FINAL";
-    float time = Game.Practice ? Game.Elapsed : Game.Elapsed < 30 ? 30 - Game.Elapsed : Game.Elapsed < 38 ? 38 - Game.Elapsed : Mathf.Max(0, 158 - Game.Elapsed);
-    _clock.Text = $"{(int)time / 60}:{(int)time % 60:00}  {phase}";
-    _clock.AddThemeFontSizeOverride("font_size", 22);
-}
+        var pos = Game.Player.Position;
+        _telemetryHeader.Text = $"ROBOT 1 ({(Game.Player.Red ? "RED" : "BLUE")})  •  X: {pos.X * 100:0.0} cm, Y: {-pos.Z * 100:0.0} cm";
 
-var pos = Game.Player.Position;
-_telemetryHeader.Text = $"ROBOT 1 ({(Game.Player.Red ? "RED" : "BLUE")})  •  X: {pos.X * 100:0.0} cm, Y: {-pos.Z * 100:0.0} cm";
+        var inv = Game.Player.Inventory;
+        for (int i = 0; i < 4; i++)
+        {
+            var dot = _inventorySlots.GetChild<ColorRect>(i);
+            if (i < inv.Count)
+            {
+                dot.Color = inv[i] == PieceKind.Pollen ? Gold : inv[i] == PieceKind.RedNectar ? Red : Blue;
+            }
+            else
+            {
+                dot.Color = new("292e39");
+            }
+        }
 
-var inv = Game.Player.Inventory;
-for (int i = 0; i < 4; i++)
-{
-    var dot = _inventorySlots.GetChild<ColorRect>(i);
-    if (i < inv.Count)
-    {
-        dot.Color = inv[i] == PieceKind.Pollen ? Gold : inv[i] == PieceKind.RedNectar ? Red : Blue;
+        string intakeState = Game.Player.Intake ? "ACTIVE" : "OFF";
+        string targetState = Game.AimFlower ? "FLOWER" : "HIVE";
+        _telemetrySubsystems.Text = $"INTAKE: {intakeState}   |   TARGET: {targetState}   |   SHOT: {Game.Player.ShotStatus}";
+
+        string[] camModes = { "ORBIT", "OVERHEAD", "CHASE" };
+        _cameraQuickBtn.Text = $"CAM: {camModes[Game.Camera.Mode % 3]} [C]";
+        _targetQuickBtn.Text = $"TARGET: {(Game.AimFlower ? "FLOWER" : "HIVE")} [T]";
+
+        if (_statusToast.Visible)
+        {
+            _statusToastLabel.Text = Game.Status;
+        }
     }
-    else
+
+    public override void _UnhandledInput(InputEvent e)
     {
-        dot.Color = new("292e39");
+        if (e is InputEventKey k && k.Pressed && !k.Echo)
+        {
+            if (_rebindingAction != null)
+            {
+                if (k.PhysicalKeycode == Key.Escape)
+                {
+                    _rebindingAction = null;
+                }
+                else
+                {
+                    ApplyRebind(_rebindingAction, k.PhysicalKeycode);
+                    _rebindingAction = null;
+                }
+                BuildSettings();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            if (k.PhysicalKeycode == Key.Escape && _currentScreen != ScreenType.None)
+            {
+                GoBack();
+                GetViewport().SetInputAsHandled();
+            }
+        }
     }
-}
 
-string intakeState = Game.Player.Intake ? "ACTIVE" : "OFF";
-string targetState = Game.AimFlower ? "FLOWER" : "HIVE";
-_telemetrySubsystems.Text = $"INTAKE: {intakeState}   |   TARGET: {targetState}   |   SHOT: {Game.Player.ShotStatus}";
+    private void ApplyRebind(string action, Key key)
+    {
+        switch (action)
+        {
+            case "Forward": Game.KeyForward = key; break;
+            case "Backward": Game.KeyBackward = key; break;
+            case "Left": Game.KeyLeft = key; break;
+            case "Right": Game.KeyRight = key; break;
+            case "TurnLeft": Game.KeyTurnLeft = key; break;
+            case "TurnRight": Game.KeyTurnRight = key; break;
+            case "Intake": Game.KeyIntake = key; break;
+            case "Launch": Game.KeyLaunch = key; break;
+            case "Target": Game.KeyTarget = key; break;
+            case "Camera": Game.KeyCamera = key; break;
+            case "Reset": Game.KeyReset = key; break;
+            case "Human": Game.KeyHuman = key; break;
+            case "Extract": Game.KeyExtract = key; break;
+        }
+    }
 
-if (_telemetry != null)
-{
-    var p = Game.Player.Position;
-    _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot" + (Game.Player.Rig == null ? "" : "\n" + Game.Player.Rig.MotorStatus);
-}
+    private static string GetKeyName(Key key)
+    {
+        string name = OS.GetKeycodeString(key);
+        if (string.IsNullOrEmpty(name)) name = key.ToString();
+        return name;
+    }
 
-if (_status != null) { _status.Text = Game.Status; _status.TooltipText = Game.Status; }
-
-if (_statusToast.Visible)
-{
-    _statusToastLabel.Text = Game.Status;
-}
-
+    // =========================================================================
+    // CAD / URDF & PARTIAL CLASS COMPATIBILITY BRIDGES
+    // =========================================================================
+    private VBoxContainer _content => _dialogBody;
+    private void Clear(string heading, string description = "") => ClearDialog(heading, description);
+    private void Back() { _draft = null; if (Game.Started) ShowPause(true); else ShowMenu(); }
+    private void RobotSetup() => NavigateTo(ScreenType.RobotCreator);
+    private static Button Button(Node parent, string caption, Action action)
+    {
+        var button = new Button { Text = caption, FocusMode = Control.FocusModeEnum.All };
+        button.AddThemeFontSizeOverride("font_size", 18);
+        button.Pressed += action;
+        parent.AddChild(button);
+        return button;
+    }
+    private void Slider(string title, double min, double max, double value, Action<double> changed)
+    {
+        CreateSlider(_dialogBody, title, min, max, 0.05, value, changed);
     }
 }

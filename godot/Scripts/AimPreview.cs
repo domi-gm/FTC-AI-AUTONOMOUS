@@ -33,7 +33,8 @@ public partial class AimPreview : Node3D
     public override void _PhysicsProcess(double delta)
     {
         var robot = Game.Player;
-        if (!Game.Running || robot == null) return;
+        if (!Game.Running || robot == null) { _line.Visible = false; return; }
+        _line.Visible = Game.ShowTrajectory;
         PieceKind? kind = robot.Inventory.Count > 0 ? robot.Inventory[0] : null;
         bool changed = robot != _lastRobot || kind != _lastKind || Game.AimFlower != _lastTarget || robot.Inventory.Count != _lastCount;
         _lastRobot = robot; _lastKind = kind; _lastTarget = Game.AimFlower;

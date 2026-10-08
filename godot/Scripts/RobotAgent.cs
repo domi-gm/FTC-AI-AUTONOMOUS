@@ -249,7 +249,6 @@ public void ExcludeLauncher(GamePiece ball)
     ball.IgnoreLauncherBriefly(this);
 }
 
-    }
     private void Think(float dt)
     {
         Intake = true; FireCommand = false;

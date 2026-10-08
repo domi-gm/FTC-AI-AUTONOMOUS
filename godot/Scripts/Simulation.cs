@@ -16,6 +16,39 @@ public partial class Simulation : Node3D
     public PracticePath PathEditor;
     public AimPreview Aim;
     public bool Started, Paused, Practice = true, TwoPlayers, AutonomousDrill, TrainingGround;
+    public bool OpponentAi = true;
+    public bool ShowTrajectory = true;
+    public Key KeyForward = Key.W;
+    public Key KeyBackward = Key.S;
+    public Key KeyLeft = Key.A;
+    public Key KeyRight = Key.D;
+    public Key KeyTurnLeft = Key.Q;
+    public Key KeyTurnRight = Key.E;
+    public Key KeyIntake = Key.Shift;
+    public Key KeyLaunch = Key.Space;
+    public Key KeyTarget = Key.T;
+    public Key KeyCamera = Key.C;
+    public Key KeyReset = Key.R;
+    public Key KeyHuman = Key.H;
+    public Key KeyExtract = Key.K;
+
+    public void ResetKeyBindings()
+    {
+        KeyForward = Key.W;
+        KeyBackward = Key.S;
+        KeyLeft = Key.A;
+        KeyRight = Key.D;
+        KeyTurnLeft = Key.Q;
+        KeyTurnRight = Key.E;
+        KeyIntake = Key.Shift;
+        KeyLaunch = Key.Space;
+        KeyTarget = Key.T;
+        KeyCamera = Key.C;
+        KeyReset = Key.R;
+        KeyHuman = Key.H;
+        KeyExtract = Key.K;
+    }
+
     private readonly HashSet<GamePiece> _redScoredHive = new();
     private readonly HashSet<GamePiece> _blueScoredHive = new();
     public bool Finished => !Practice && _elapsed >= (AutonomousDrill ? 30 : 158);
@@ -251,17 +284,17 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         robot.Bot = false;
         bool Held(Key key) => Input.IsPhysicalKeyPressed(key);
         var v = second ? new Vector3((Held(Key.Right) ? 1 : 0) - (Held(Key.Left) ? 1 : 0), 0, (Held(Key.Down) ? 1 : 0) - (Held(Key.Up) ? 1 : 0))
-            : new Vector3((Held(Key.D) ? 1 : 0) - (Held(Key.A) ? 1 : 0), 0, (Held(Key.S) ? 1 : 0) - (Held(Key.W) ? 1 : 0));
+            : new Vector3((Held(KeyRight) ? 1 : 0) - (Held(KeyLeft) ? 1 : 0), 0, (Held(KeyBackward) ? 1 : 0) - (Held(KeyForward) ? 1 : 0));
         robot.Command = Camera.ToGroundMovement(new Vector2(v.X, v.Z));
         if (!second && Practice && PathEditor.Following)
         {
             if (v.LengthSquared() > 0) PathEditor.Following = false;
             else robot.Command = PathEditor.Command();
         }
-        robot.TurnCommand = second ? (Held(Key.Comma) ? 1 : 0) - (Held(Key.Period) ? 1 : 0) : (Held(Key.Q) ? 1 : 0) - (Held(Key.E) ? 1 : 0);
-        robot.Intake = (Held(second ? Key.Enter : Key.Shift) && (second || !Input.IsMouseButtonPressed(MouseButton.Middle)))
+        robot.TurnCommand = second ? (Held(Key.Comma) ? 1 : 0) - (Held(Key.Period) ? 1 : 0) : (Held(KeyTurnLeft) ? 1 : 0) - (Held(KeyTurnRight) ? 1 : 0);
+        robot.Intake = (Held(second ? Key.Enter : KeyIntake) && (second || !Input.IsMouseButtonPressed(MouseButton.Middle)))
             || (!second && Held(Key.J));
-        robot.FireCommand = Held(second ? Key.Slash : Key.Space);
+        robot.FireCommand = Held(second ? Key.Slash : KeyLaunch);
         int pad = second ? 1 : 0;
         if (Input.GetConnectedJoypads().Contains(pad))
         {
@@ -304,20 +337,17 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         if (e is InputEventKey k && k.Pressed && !k.Echo)
         {
             if (Player.Rig?.HandleToggleKey(k) == true) { GetViewport().SetInputAsHandled(); return; }
-            switch (k.PhysicalKeycode)
-            {
-                case Key.Escape: TogglePause(); break;
-                case Key.C: Camera.Mode = (Camera.Mode + 1) % 3; break;
-                case Key.R: Reset(); break;
-                case Key.T: AimFlower = !AimFlower; break;
-                case Key.B: if (Practice && Running) SpawnBall(PieceKind.Pollen, Player.Position + Player.Front * .5f + Vector3.Up * .12f); break;
-                case Key.N: if (Practice && Running) SpawnBall(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar, Player.Position + Player.Front * .5f + Vector3.Up * .12f); break;
-                case Key.H: DropHuman(Player.Red); break;
-                case Key.K: KnockFlower(Player); break;
-                case Key.I: Player.Rig?.SelectNextMotor(); break;
-                case Key.F5: Save(); break;
-                case Key.F9: Load(); break;
-            }
+            if (k.PhysicalKeycode == Key.Escape) TogglePause();
+            else if (k.PhysicalKeycode == KeyCamera) Camera.Mode = (Camera.Mode + 1) % 3;
+            else if (k.PhysicalKeycode == KeyReset) Reset();
+            else if (k.PhysicalKeycode == KeyTarget) AimFlower = !AimFlower;
+            else if (k.PhysicalKeycode == Key.B && Practice && Running) SpawnBall(PieceKind.Pollen, Player.Position + Player.Front * .5f + Vector3.Up * .12f);
+            else if (k.PhysicalKeycode == Key.N && Practice && Running) SpawnBall(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar, Player.Position + Player.Front * .5f + Vector3.Up * .12f);
+            else if (k.PhysicalKeycode == KeyHuman) DropHuman(Player.Red);
+            else if (k.PhysicalKeycode == KeyExtract) KnockFlower(Player);
+            else if (k.PhysicalKeycode == Key.I) Player.Rig?.SelectNextMotor();
+            else if (k.PhysicalKeycode == Key.F5) Save();
+            else if (k.PhysicalKeycode == Key.F9) Load();
         }
     }
     public void DropHuman(bool red)

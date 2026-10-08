@@ -18,86 +18,270 @@ public partial class SimulatorHud
         _draft ??= Game.Profile.Copy();
         _draft.Imported ??= new ImportedRobotDefinition();
         var definition = _draft.Imported;
-        Clear("IMPORT ROBOT", "STL: geometry + manual joint setup.\nURDF: geometry + existing joints and limits imported automatically.");
-        var name = new LineEdit { Text = _draft.Name, PlaceholderText = "Robot name", MaxLength = 100 };
-        name.TextChanged += text => _draft.Name = text; _content.AddChild(name);
-        if (definition.SourceFormat == "stl")
+        Clear("IMPORT CAD ROBOT", "Step-by-step CAD loader: URDF automatic kinematics or STL subassemblies");
+
+        // Overview / Instructions Guide Card
+        var guideCard = CreateCard(_dialogBody, "QUICK INSTRUCTIONS & CAD WORKFLOW");
+        var guideText = new Label
         {
-            Choice("STL units", new[] { "mm", "cm", "m", "in" }, definition.Units, value => { definition.Units = value; ImportSetup(); });
-            Choice("Vertical axis in Fusion", new[] { "Z", "Y" }, definition.UpAxis, value => { definition.UpAxis = value; ImportSetup(); });
-        }
-        else AddImportText("URDF imported automatically • metres / Z-up • review joints before applying");
-        Button(_content, $"FRONT ORIENTATION: {definition.QuarterTurns * 90}° (Godot forward = -Z)", () => { definition.QuarterTurns = (definition.QuarterTurns + 1) % 4; ImportSetup(); });
-        bool valid = false;
-        if (definition.Parts.Count > 0)
+            Text = "• OPTION A: URDF Package (Recommended) — Exports full kinematics, joints, pivots, and limits from CAD automatically. Mesh files are loaded with correct positions.\n• OPTION B: STL Subassemblies — Import rigid components (chassis, arms, sliders) and define joints manually in the Mechanism Editor.\n• Units: Ensure CAD units match your export (FTC max size is 45.72 cm / 18 inches).",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        guideText.AddThemeFontSizeOverride("font_size", 15);
+        guideText.AddThemeColorOverride("font_color", TextMuted);
+        guideCard.AddChild(guideText);
+
+        // Step 1: Robot Profile & Model Source Card
+        var sourceCard = CreateCard(_dialogBody, "STEP 1: ROBOT NAME & CAD SOURCE");
+
+        var nameRow = new HBoxContainer();
+        nameRow.AddThemeConstantOverride("separation", 12);
+        sourceCard.AddChild(nameRow);
+
+        var nameLbl = new Label { Text = "Robot Name:", SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
+        nameLbl.AddThemeFontSizeOverride("font_size", 18);
+        nameLbl.AddThemeColorOverride("font_color", TextWhite);
+        nameRow.AddChild(nameLbl);
+
+        var name = new LineEdit { Text = _draft.Name, PlaceholderText = "Enter robot name...", MaxLength = 100, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        name.AddThemeFontSizeOverride("font_size", 17);
+        name.TextChanged += text => _draft.Name = text;
+        nameRow.AddChild(name);
+
+        var importRow = new HBoxContainer();
+        importRow.AddThemeConstantOverride("separation", 12);
+        sourceCard.AddChild(importRow);
+
+        var urdfBtn = Button(importRow, _importBusy ? "IMPORTING…" : "IMPORT URDF + EXISTING JOINTS…", SelectUrdf);
+        urdfBtn.Disabled = _importBusy;
+        urdfBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        urdfBtn.CustomMinimumSize = new(0, 48);
+
+        var stlBtn = Button(importRow, _importBusy ? "IMPORTING…" : "ADD STL SUBASSEMBLIES…", SelectStl);
+        stlBtn.Disabled = _importBusy || definition.Parts.Count >= 32 || definition.SourceFormat == "urdf";
+        stlBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        stlBtn.CustomMinimumSize = new(0, 48);
+
+        if (definition.SourceFormat == "urdf")
         {
-            try
+            var newStlBtn = Button(sourceCard, "START NEW MANUAL STL ROBOT", () =>
             {
-                var bounds = ImportedRobot.Bounds(definition);
-                _content.AddChild(new RobotImportPreview { Definition = definition.Copy(), CustomMinimumSize = new(450, 240) });
-                AddImportText($"Width {bounds.Size.X * 100:0.0} × length {bounds.Size.Z * 100:0.0} × height {bounds.Size.Y * 100:0.0} cm\n{definition.Parts.Count} STL meshes • {ImportedRobot.TriangleCount(definition):N0} triangles\nKinematic chassis + {Math.Max(0, definition.Bodies.Count - 1)} dynamic links • {definition.Joints.Count} joints");
-                if (bounds.Size.X > .4572f || bounds.Size.Z > .4572f) AddImportText("Footprint exceeds 45.72 cm. Check scale / competition constraints.");
-                RobotMechanismValidation.ValidateReady(definition); valid = true;
-            }
-            catch (Exception ex) { AddImportText(ex.Message); }
+                _draft.Imported = new ImportedRobotDefinition();
+                _importMessage = "New STL draft. Configure joints manually after importing geometry.";
+                ImportSetup();
+            });
+            newStlBtn.Disabled = _importBusy;
+            newStlBtn.CustomMinimumSize = new(0, 44);
         }
-        if (_importMessage != "") AddImportText(_importMessage);
-        if (definition.ImportNotes.Count > 0) AddImportText(string.Join("\n", definition.ImportNotes));
-        Button(_content, _importBusy ? "IMPORTING…" : "IMPORT URDF + EXISTING JOINTS…", SelectUrdf).Disabled = _importBusy;
-        var import = Button(_content, _importBusy ? "IMPORTING…" : "ADD STL SUBASSEMBLIES…", SelectStl);
-        import.Disabled = _importBusy || definition.Parts.Count >= 32 || definition.SourceFormat == "urdf";
-        if (definition.SourceFormat == "urdf") Button(_content, "START NEW MANUAL STL ROBOT", () =>
-        {
-            _draft.Imported = new ImportedRobotDefinition(); _importMessage = "New STL draft. Configure joints manually after importing geometry."; ImportSetup();
-        }).Disabled = _importBusy;
+
         if (definition.Parts.Count == 0)
         {
-            Button(_content, "LOAD ARTICULATED DEMO (hinge + lift)", () =>
-            {
-                try { _draft.Imported = RobotMechanismSample.Load(); _draft.Name = "Articulated STL demo"; _importMessage = "Demo loaded. Open RIGID GROUPS / JOINTS / MOTORS."; }
-                catch (Exception ex) { _importMessage = ex.Message; }
-                ImportSetup();
-            }).Disabled = _importBusy;
-            var sample = Button(_content, "LOAD EXAMPLE STL (40 × 30 × 25 cm)", () =>
+            var demoRow = new HBoxContainer();
+            demoRow.AddThemeConstantOverride("separation", 12);
+            sourceCard.AddChild(demoRow);
+
+            var demoBtn = Button(demoRow, "LOAD ARTICULATED DEMO (hinge + lift)", () =>
             {
                 try
                 {
-                    var imported = ImportedRobot.Import(ProjectSettings.GlobalizePath("res://Assets/RobotSamples/fusion-box-mm.stl"));
-                    _draft.Imported = new ImportedRobotDefinition(); _draft.Imported.Parts.Add(imported);
-                    _draft.Name = "Fusion STL example"; _importMessage = "Example loaded. Drag the preview, then SAVE + TEST IN PRACTICE.";
+                    _draft.Imported = RobotMechanismSample.Load();
+                    _draft.Name = "Articulated STL demo";
+                    _importMessage = "Demo loaded. Open RIGID GROUPS / JOINTS / MOTORS.";
                 }
                 catch (Exception ex) { _importMessage = ex.Message; }
                 ImportSetup();
             });
-            sample.Disabled = _importBusy;
+            demoBtn.Disabled = _importBusy;
+            demoBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            demoBtn.CustomMinimumSize = new(0, 44);
+
+            var sampleBtn = Button(demoRow, "LOAD EXAMPLE STL (40 × 30 × 25 cm)", () =>
+            {
+                try
+                {
+                    var imported = ImportedRobot.Import(ProjectSettings.GlobalizePath("res://Assets/RobotSamples/fusion-box-mm.stl"));
+                    _draft.Imported = new ImportedRobotDefinition();
+                    _draft.Imported.Parts.Add(imported);
+                    _draft.Name = "Fusion STL example";
+                    _importMessage = "Example loaded. Drag the preview, then SAVE + TEST IN PRACTICE.";
+                }
+                catch (Exception ex) { _importMessage = ex.Message; }
+                ImportSetup();
+            });
+            sampleBtn.Disabled = _importBusy;
+            sampleBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            sampleBtn.CustomMinimumSize = new(0, 44);
         }
-        foreach (var part in definition.Parts.ToArray())
+
+        // Step 2: Scale & Orientation Calibration Card
+        var calibCard = CreateCard(_dialogBody, "STEP 2: UNITS & ORIENTATION");
+
+        if (definition.SourceFormat == "stl")
         {
-            var row = new HBoxContainer(); _content.AddChild(row);
-            var groupName = new LineEdit { Text = part.Name, MaxLength = 100, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            groupName.TextChanged += text => part.Name = text; row.AddChild(groupName);
-            Button(row, "REMOVE", () => { definition.Parts.Remove(part); _importMessage = ""; ImportSetup(); }).Disabled = _importBusy;
+            Choice(calibCard, "STL export units:", new[] { "mm", "cm", "m", "in" }, definition.Units, value => { definition.Units = value; ImportSetup(); });
+            Choice(calibCard, "Vertical up-axis in CAD:", new[] { "Z", "Y" }, definition.UpAxis, value => { definition.UpAxis = value; ImportSetup(); });
         }
-        Button(_content, "RIGID GROUPS / JOINTS / MOTORS", MechanismSetup).Disabled = definition.Parts.Count == 0 || _importBusy;
-        AddImportText("Drive uses the existing kinematic chassis. Imported links use box collisions; internal self-collisions are disabled. Intake/shooting remain gameplay anchors. Joint motors: I selects, U/O moves.");
-        var apply = Button(_content, "SAVE + TEST IN PRACTICE", () =>
+        else
         {
-            try { _draft.Save(); Game.Profile = _draft.Copy(); Game.Practice = true; Game.Reset(); _draft = null; }
-            catch (Exception ex) { _importMessage = "Cannot apply: " + ex.Message; ImportSetup(); }
+            var urdfInfo = new Label { Text = "URDF imported automatically • metres / Z-up • review joints before applying", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            urdfInfo.AddThemeFontSizeOverride("font_size", 16);
+            urdfInfo.AddThemeColorOverride("font_color", Gold);
+            calibCard.AddChild(urdfInfo);
+        }
+
+        var orientRow = new HBoxContainer();
+        orientRow.AddThemeConstantOverride("separation", 12);
+        calibCard.AddChild(orientRow);
+
+        var orientBtn = Button(orientRow, $"FRONT ORIENTATION: {definition.QuarterTurns * 90}° (Godot forward = -Z)", () =>
+        {
+            definition.QuarterTurns = (definition.QuarterTurns + 1) % 4;
+            ImportSetup();
+        });
+        orientBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        orientBtn.CustomMinimumSize = new(0, 44);
+
+        // Step 3: 3D Visual Validation & Sizing Card
+        bool valid = false;
+        if (definition.Parts.Count > 0)
+        {
+            var previewCard = CreateCard(_dialogBody, "STEP 3: 3D PREVIEW & FTC 18\" SIZING");
+
+            try
+            {
+                var bounds = ImportedRobot.Bounds(definition);
+                previewCard.AddChild(new RobotImportPreview { Definition = definition.Copy(), CustomMinimumSize = new(450, 240) });
+
+                var statsLabel = new Label
+                {
+                    Text = $"Width {bounds.Size.X * 100:0.0} × length {bounds.Size.Z * 100:0.0} × height {bounds.Size.Y * 100:0.0} cm\n{definition.Parts.Count} STL meshes • {ImportedRobot.TriangleCount(definition):N0} triangles\nKinematic chassis + {Math.Max(0, definition.Bodies.Count - 1)} dynamic links • {definition.Joints.Count} joints",
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart
+                };
+                statsLabel.AddThemeFontSizeOverride("font_size", 16);
+                statsLabel.AddThemeColorOverride("font_color", TextWhite);
+                previewCard.AddChild(statsLabel);
+
+                if (bounds.Size.X > .4572f || bounds.Size.Z > .4572f)
+                {
+                    var warnLabel = new Label
+                    {
+                        Text = "Footprint exceeds 45.72 cm. Check scale / competition constraints.",
+                        AutowrapMode = TextServer.AutowrapMode.WordSmart
+                    };
+                    warnLabel.AddThemeFontSizeOverride("font_size", 16);
+                    warnLabel.AddThemeColorOverride("font_color", Red);
+                    previewCard.AddChild(warnLabel);
+                }
+
+                RobotMechanismValidation.ValidateReady(definition);
+                valid = true;
+            }
+            catch (Exception ex)
+            {
+                var errLabel = new Label { Text = ex.Message, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+                errLabel.AddThemeFontSizeOverride("font_size", 16);
+                errLabel.AddThemeColorOverride("font_color", Red);
+                previewCard.AddChild(errLabel);
+            }
+
+            // Subassembly list
+            if (definition.Parts.Count > 0)
+            {
+                var partsCard = CreateCard(_dialogBody, "SUBASSEMBLIES & PARTS LIST");
+                foreach (var part in definition.Parts.ToArray())
+                {
+                    var row = new HBoxContainer();
+                    partsCard.AddChild(row);
+                    var groupName = new LineEdit { Text = part.Name, MaxLength = 100, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+                    groupName.AddThemeFontSizeOverride("font_size", 16);
+                    groupName.TextChanged += text => part.Name = text;
+                    row.AddChild(groupName);
+                    var remBtn = Button(row, "REMOVE", () => { definition.Parts.Remove(part); _importMessage = ""; ImportSetup(); });
+                    remBtn.Disabled = _importBusy;
+                }
+            }
+        }
+
+        // Step 4: Articulations, Joints & Motors
+        var mechCard = CreateCard(_dialogBody, "STEP 4: MECHANISMS & ARTICULATIONS");
+        var mechBtn = Button(mechCard, "RIGID GROUPS / JOINTS / MOTORS", MechanismSetup);
+        mechBtn.Disabled = definition.Parts.Count == 0 || _importBusy;
+        mechBtn.CustomMinimumSize = new(0, 48);
+
+        var mechHelp = new Label
+        {
+            Text = "Drive uses the existing kinematic chassis. Imported links use box collisions; internal self-collisions are disabled. Intake/shooting remain gameplay anchors. Joint motors: I selects, U/O moves.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        mechHelp.AddThemeFontSizeOverride("font_size", 15);
+        mechHelp.AddThemeColorOverride("font_color", TextMuted);
+        mechCard.AddChild(mechHelp);
+
+        if (!string.IsNullOrEmpty(_importMessage))
+        {
+            var msgLabel = new Label { Text = _importMessage, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            msgLabel.AddThemeFontSizeOverride("font_size", 16);
+            msgLabel.AddThemeColorOverride("font_color", Gold);
+            _content.AddChild(msgLabel);
+        }
+
+        if (definition.ImportNotes.Count > 0)
+        {
+            var notesLabel = new Label { Text = string.Join("\n", definition.ImportNotes), AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            notesLabel.AddThemeFontSizeOverride("font_size", 15);
+            notesLabel.AddThemeColorOverride("font_color", TextMuted);
+            _content.AddChild(notesLabel);
+        }
+
+        // Bottom Actions
+        var actionsRow = new HBoxContainer();
+        actionsRow.AddThemeConstantOverride("separation", 14);
+        _dialogBody.AddChild(actionsRow);
+
+        var apply = Button(actionsRow, "SAVE + TEST IN PRACTICE", () =>
+        {
+            try
+            {
+                _draft.Save();
+                Game.Profile = _draft.Copy();
+                Game.Practice = true;
+                Game.Reset();
+                _draft = null;
+            }
+            catch (Exception ex)
+            {
+                _importMessage = "Cannot apply: " + ex.Message;
+                ImportSetup();
+            }
         });
         apply.Disabled = !valid || _importBusy;
-        Button(_content, "USE PARAMETRIC ROBOT", () => { _draft.Imported = null; RobotSetup(); }).Disabled = _importBusy;
-        Button(_content, "BACK / DISCARD", Back);
+        apply.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        apply.CustomMinimumSize = new(0, 52);
+
+        var paramBtn = Button(actionsRow, "USE PARAMETRIC ROBOT", () =>
+        {
+            _draft.Imported = null;
+            RobotSetup();
+        });
+        paramBtn.Disabled = _importBusy;
+        paramBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        paramBtn.CustomMinimumSize = new(0, 52);
+
+        var backBtn = Button(actionsRow, "BACK / DISCARD", Back);
+        backBtn.CustomMinimumSize = new(180, 52);
     }
     private void AddImportText(string text) => _content.AddChild(new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart });
-    private void Choice(string caption, string[] values, string selected, Action<string> changed)
+    private void Choice(Node parent, string caption, string[] values, string selected, Action<string> changed)
     {
-        var row = new HBoxContainer(); _content.AddChild(row);
-        row.AddChild(new Label { Text = caption, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        var row = new HBoxContainer(); parent.AddChild(row);
+        var label = new Label { Text = caption, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        label.AddThemeFontSizeOverride("font_size", 16);
+        row.AddChild(label);
         var choice = new OptionButton(); foreach (var value in values) choice.AddItem(value);
         choice.Selected = Array.IndexOf(values, selected);
         choice.ItemSelected += index => changed(values[(int)index]); row.AddChild(choice);
     }
+    private void Choice(string caption, string[] values, string selected, Action<string> changed) => Choice(_content, caption, values, selected, changed);
     private void SelectStl()
     {
         var draft = _draft;
