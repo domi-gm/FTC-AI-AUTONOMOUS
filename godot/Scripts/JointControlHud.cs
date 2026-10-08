@@ -12,7 +12,7 @@ public partial class SimulatorHud
     {
         _jointControls = new PanelContainer { AnchorLeft = 1, AnchorRight = 1, AnchorTop = 1, AnchorBottom = 1,
             OffsetLeft = -345, OffsetRight = -24, OffsetTop = -255, OffsetBottom = -80, Visible = false };
-        _jointControls.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = new Color(.045f,.06f,.09f,.9f), ContentMarginLeft = 10, ContentMarginRight = 10 });
+        _jointControls.AddThemeStyleboxOverride("panel", CreateBox(new Color(.045f, .06f, .09f, .9f), Gold, 8, 1, 10, 10));
         _root.AddChild(_jointControls);
         var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled }; _jointControls.AddChild(scroll);
         _jointControlsList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; scroll.AddChild(_jointControlsList);

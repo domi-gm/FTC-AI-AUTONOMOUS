@@ -166,7 +166,7 @@ public partial class SimulatorHud : CanvasLayer
             OffsetBottom = 92,
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
-        _scoreCard.AddThemeStyleboxOverride("panel", CreateBox(DialogBg, BtnNormalBorder, 10, 1, 24, 8));
+        _scoreCard.AddThemeStyleboxOverride("panel", CreateBox(DialogBg, Gold, 10, 1, 24, 8));
         _hudLayer.AddChild(_scoreCard);
 
         var scoreLayout = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
@@ -233,7 +233,7 @@ public partial class SimulatorHud : CanvasLayer
             OffsetBottom = -20,
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
-        _telemetryCard.AddThemeStyleboxOverride("panel", CreateBox(DialogBg, BtnNormalBorder, 10, 1, 18, 12));
+        _telemetryCard.AddThemeStyleboxOverride("panel", CreateBox(DialogBg, Gold, 10, 1, 18, 12));
         _hudLayer.AddChild(_telemetryCard);
 
         var telemBox = new VBoxContainer();
@@ -295,7 +295,7 @@ public partial class SimulatorHud : CanvasLayer
             OffsetBottom = 64,
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
-        _statusToast.AddThemeStyleboxOverride("panel", CreateBox(DialogBg, BtnNormalBorder, 8, 1, 16, 8));
+        _statusToast.AddThemeStyleboxOverride("panel", CreateBox(DialogBg, Gold, 8, 1, 16, 8));
         _statusToastLabel = new Label { Text = "Ready", HorizontalAlignment = HorizontalAlignment.Left };
         _statusToastLabel.AddThemeFontSizeOverride("font_size", 15);
         _statusToastLabel.AddThemeColorOverride("font_color", TextMuted);
@@ -336,18 +336,18 @@ public partial class SimulatorHud : CanvasLayer
             AnchorRight = 0.5f,
             AnchorTop = 0.5f,
             AnchorBottom = 0.5f,
-            OffsetLeft = -540,
-            OffsetRight = 540,
-            OffsetTop = -350,
-            OffsetBottom = 350
+            OffsetLeft = -580,
+            OffsetRight = 580,
+            OffsetTop = -360,
+            OffsetBottom = 360
         };
-        var dialogStyle = CreateBox(DialogBg, BtnNormalBorder, 10, 1, 36, 26);
+        var dialogStyle = CreateBox(DialogBg, Gold, 10, 1, 36, 26);
         dialogStyle.BorderWidthTop = 3;
-        dialogStyle.BorderColor = GoldBorder;
+        dialogStyle.BorderColor = Gold;
         _dialogPanel.AddThemeStyleboxOverride("panel", dialogStyle);
         _root.AddChild(_dialogPanel);
 
-        var dialogLayout = new VBoxContainer();
+        var dialogLayout = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         dialogLayout.AddThemeConstantOverride("separation", 16);
         _dialogPanel.AddChild(dialogLayout);
 
@@ -384,6 +384,7 @@ public partial class SimulatorHud : CanvasLayer
         {
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill
         };
         dialogLayout.AddChild(_dialogScroll);
@@ -551,7 +552,7 @@ public partial class SimulatorHud : CanvasLayer
             FocusMode = Control.FocusModeEnum.All
         };
 
-        var cardNormal = CreateBox(CardBg, BtnNormalBorder, 10, 1, 20, 16);
+        var cardNormal = CreateBox(CardBg, Gold, 10, 1, 20, 16);
         var cardHover = CreateBox(new Color(0.12f, 0.16f, 0.24f, 0.98f), Gold, 10, 2, 20, 16);
         var cardPressed = CreateBox(new Color(0.06f, 0.08f, 0.12f, 0.98f), Gold, 10, 2, 20, 16);
         var cardFocus = CreateBox(CardBg, new Color(0.28f, 0.36f, 0.48f, 0.9f), 10, 1, 20, 16);
@@ -854,7 +855,7 @@ public partial class SimulatorHud : CanvasLayer
             CustomMinimumSize = new Vector2(440, 240),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
-        card2.AddThemeStyleboxOverride("panel", CreateBox(CardBg, Green, 10, 1, 24, 20));
+        card2.AddThemeStyleboxOverride("panel", CreateBox(CardBg, Gold, 10, 1, 24, 20));
         grid.AddChild(card2);
 
         var vbox2 = new VBoxContainer();
@@ -897,23 +898,23 @@ public partial class SimulatorHud : CanvasLayer
         _draft.Imported = null;
         var profile = _draft;
 
-        var mainSplit = new HBoxContainer();
-        mainSplit.AddThemeConstantOverride("separation", 20);
+        var mainSplit = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        mainSplit.AddThemeConstantOverride("separation", 16);
         _dialogBody.AddChild(mainSplit);
 
         // LEFT COLUMN: Controls & Sliders
-        var leftCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var leftCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new(480, 0) };
         leftCol.AddThemeConstantOverride("separation", 14);
         mainSplit.AddChild(leftCol);
 
         // RIGHT COLUMN: 3D Preview & Sizing Compliance
-        var rightCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var rightCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new(400, 0) };
         rightCol.AddThemeConstantOverride("separation", 14);
         mainSplit.AddChild(rightCol);
 
         // Right Column: 3D Visual Preview Card
         var previewCard = CreateCard(rightCol, "3D ROBOT PREVIEW");
-        var preview = new RobotParametricPreview { Profile = profile.Copy(), CustomMinimumSize = new(440, 310) };
+        var preview = new RobotParametricPreview { Profile = profile.Copy(), CustomMinimumSize = new(380, 250) };
         previewCard.AddChild(preview);
 
         var previewHint = new Label
@@ -933,7 +934,7 @@ public partial class SimulatorHud : CanvasLayer
 
         bool isLegal = profile.WidthCm <= 45.721f && profile.LengthCm <= 45.721f;
         var legalBadge = CreateBadge(isLegal ? "SIZE OK" : "OVERSIZED !", isLegal ? Green : Red, Colors.White, 15);
-        legalBadge.CustomMinimumSize = new(130, 32);
+        legalBadge.CustomMinimumSize = new(120, 30);
         sizingRow.AddChild(legalBadge);
 
         var sizingLabel = new Label
@@ -941,7 +942,7 @@ public partial class SimulatorHud : CanvasLayer
             Text = $"{profile.WidthCm:0.0} x {profile.LengthCm:0.0} cm  ({profile.WidthCm / 2.54f:0.0}\" x {profile.LengthCm / 2.54f:0.0}\")",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
-        sizingLabel.AddThemeFontSizeOverride("font_size", 17);
+        sizingLabel.AddThemeFontSizeOverride("font_size", 16);
         sizingLabel.AddThemeColorOverride("font_color", TextWhite);
         sizingRow.AddChild(sizingLabel);
 
@@ -969,9 +970,10 @@ public partial class SimulatorHud : CanvasLayer
         nameEdit.TextChanged += text => profile.Name = text;
         nameRow.AddChild(nameEdit);
 
-        var presetsRow = new HBoxContainer();
-        presetsRow.AddThemeConstantOverride("separation", 10);
-        nameCard.AddChild(presetsRow);
+        var presetsGrid = new GridContainer { Columns = 2 };
+        presetsGrid.AddThemeConstantOverride("h_separation", 10);
+        presetsGrid.AddThemeConstantOverride("v_separation", 8);
+        nameCard.AddChild(presetsGrid);
 
         // Left Column: Sliders Card
         var slidersCard = CreateCard(leftCol, "DRIVETRAIN & DIMENSIONS");
@@ -1014,9 +1016,10 @@ public partial class SimulatorHud : CanvasLayer
         var subCard = CreateCard(leftCol, "SUBSYSTEMS");
 
         var turretRow = new HBoxContainer();
-        turretRow.AddThemeConstantOverride("separation", 12);
-        var tLbl = new Label { Text = "Turrets:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        tLbl.AddThemeFontSizeOverride("font_size", 18);
+        turretRow.AddThemeConstantOverride("separation", 10);
+        var tLbl = new Label { Text = "Turrets:", SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
+        tLbl.AddThemeFontSizeOverride("font_size", 16);
+        tLbl.CustomMinimumSize = new(90, 0);
         turretRow.AddChild(tLbl);
 
         var turretButtons = new Button[3];
@@ -1030,19 +1033,22 @@ public partial class SimulatorHud : CanvasLayer
                 for (int b = 0; b < 3; b++)
                 {
                     bool active = b + 1 == profile.Turrets;
-                    turretButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 16, 10));
+                    turretButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 12, 8));
                     turretButtons[b].AddThemeColorOverride("font_color", active ? Colors.Black : TextWhite);
                 }
                 preview.UpdateProfile(profile);
             }, profile.Turrets == turrets);
-            turretButtons[idx].CustomMinimumSize = new(130, 44);
+            turretButtons[idx].CustomMinimumSize = new(100, 38);
+            turretButtons[idx].AddThemeFontSizeOverride("font_size", 15);
+            turretButtons[idx].SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         }
         subCard.AddChild(turretRow);
 
         var intakeRow = new HBoxContainer();
-        intakeRow.AddThemeConstantOverride("separation", 12);
-        var iLbl = new Label { Text = "Intakes:", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        iLbl.AddThemeFontSizeOverride("font_size", 18);
+        intakeRow.AddThemeConstantOverride("separation", 10);
+        var iLbl = new Label { Text = "Intakes:", SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
+        iLbl.AddThemeFontSizeOverride("font_size", 16);
+        iLbl.CustomMinimumSize = new(90, 0);
         intakeRow.AddChild(iLbl);
 
         var intakeButtons = new Button[2];
@@ -1056,12 +1062,14 @@ public partial class SimulatorHud : CanvasLayer
                 for (int b = 0; b < 2; b++)
                 {
                     bool active = b + 1 == profile.Intakes;
-                    intakeButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 16, 10));
+                    intakeButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 12, 8));
                     intakeButtons[b].AddThemeColorOverride("font_color", active ? Colors.Black : TextWhite);
                 }
                 preview.UpdateProfile(profile);
             }, profile.Intakes == intakes);
-            intakeButtons[idx].CustomMinimumSize = new(160, 44);
+            intakeButtons[idx].CustomMinimumSize = new(140, 38);
+            intakeButtons[idx].AddThemeFontSizeOverride("font_size", 15);
+            intakeButtons[idx].SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         }
         subCard.AddChild(intakeRow);
 
@@ -1074,13 +1082,13 @@ public partial class SimulatorHud : CanvasLayer
             for (int b = 0; b < 3; b++)
             {
                 bool active = b + 1 == profile.Turrets;
-                turretButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 16, 10));
+                turretButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 12, 8));
                 turretButtons[b].AddThemeColorOverride("font_color", active ? Colors.Black : TextWhite);
             }
             for (int b = 0; b < 2; b++)
             {
                 bool active = b + 1 == profile.Intakes;
-                intakeButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 16, 10));
+                intakeButtons[b].AddThemeStyleboxOverride("normal", CreateBox(active ? Gold : BtnNormalBg, active ? Gold : BtnNormalBorder, 8, active ? 2 : 1, 12, 8));
                 intakeButtons[b].AddThemeColorOverride("font_color", active ? Colors.Black : TextWhite);
             }
             widthSlider.Value = w;
@@ -1092,10 +1100,18 @@ public partial class SimulatorHud : CanvasLayer
             preview.UpdateProfile(profile);
         }
 
-        CreateButton(presetsRow, "FTC Max 18\"", () => ApplyPreset("Max Swerve", 45.72f, 45.72f, 1.8f, 3.5f, 3.2f, 1, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        CreateButton(presetsRow, "Agile Compact", () => ApplyPreset("Agile Runner", 35.0f, 35.0f, 2.5f, 5.0f, 4.5f, 1, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        CreateButton(presetsRow, "Sniper Turret", () => ApplyPreset("Sniper Turret", 45.72f, 45.72f, 1.4f, 2.8f, 2.5f, 2, 1)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        CreateButton(presetsRow, "Dual Harvester", () => ApplyPreset("Dual Intake", 42.0f, 42.0f, 1.6f, 3.2f, 3.0f, 1, 2)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        void AddPresetButton(string label, Action action)
+        {
+            var btn = CreateButton(presetsGrid, label, action);
+            btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            btn.CustomMinimumSize = new(0, 38);
+            btn.AddThemeFontSizeOverride("font_size", 15);
+        }
+
+        AddPresetButton("FTC Max 18\"", () => ApplyPreset("Max Swerve", 45.72f, 45.72f, 1.8f, 3.5f, 3.2f, 1, 1));
+        AddPresetButton("Agile Compact", () => ApplyPreset("Agile Runner", 35.0f, 35.0f, 2.5f, 5.0f, 4.5f, 1, 1));
+        AddPresetButton("Sniper Turret", () => ApplyPreset("Sniper Turret", 45.72f, 45.72f, 1.4f, 2.8f, 2.5f, 2, 1));
+        AddPresetButton("Dual Harvester", () => ApplyPreset("Dual Intake", 42.0f, 42.0f, 1.6f, 3.2f, 3.0f, 1, 2));
 
         // Bottom Actions
         var actionsRow = new HBoxContainer();
@@ -1151,22 +1167,88 @@ public partial class SimulatorHud : CanvasLayer
     {
         ClearDialog("ROBOT ROSTER & LIBRARY", "Manage your robot designs and choose robots for player and AI opponents");
 
-        // Matchup Summary Card
-        var matchupCard = CreateCard(_dialogBody, "ACTIVE MATCHUP SELECTION");
-        var matchupRow = new HBoxContainer();
-        matchupRow.AddThemeConstantOverride("separation", 16);
-        matchupCard.AddChild(matchupRow);
+        // 1. Current Active Matchup Section (Dual-Column Player vs AI)
+        var matchupCard = CreateCard(_dialogBody, "CURRENT ACTIVE MATCHUP");
+        var matchupGrid = new GridContainer { Columns = 2, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        matchupGrid.AddThemeConstantOverride("h_separation", 16);
+        matchupGrid.AddThemeConstantOverride("v_separation", 10);
+        matchupCard.AddChild(matchupGrid);
 
-        var pBadge = CreateBadge($"PLAYER: {Game.Profile.Name}", CardInner, Gold, 16);
-        pBadge.CustomMinimumSize = new(240, 36);
-        matchupRow.AddChild(pBadge);
+        // Matchup Card: Active Player
+        var pPanel = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        pPanel.AddThemeStyleboxOverride("panel", CreateBox(CardInner, Gold, 8, 2, 18, 14));
+        matchupGrid.AddChild(pPanel);
 
-        var aiBadge = CreateBadge($"AI OPPONENT: {Game.AiProfile?.Name ?? "Standard"}", CardInner, Blue, 16);
-        aiBadge.CustomMinimumSize = new(240, 36);
-        matchupRow.AddChild(aiBadge);
+        var pBox = new VBoxContainer();
+        pBox.AddThemeConstantOverride("separation", 8);
+        pPanel.AddChild(pBox);
 
-        // Actions Card
-        var actionsCard = CreateCard(_dialogBody, "ROBOT CREATION & PRESETS");
+        var pHeadRow = new HBoxContainer();
+        pHeadRow.AddThemeConstantOverride("separation", 8);
+        pBox.AddChild(pHeadRow);
+
+        var pBadge = CreateBadge("★ ACTIVE PLAYER ROBOT", Gold, Colors.Black, 13);
+        pBadge.CustomMinimumSize = new(170, 26);
+        pHeadRow.AddChild(pBadge);
+
+        bool isPlayerCad = Game.Profile.Imported != null;
+        var pTypeBadge = CreateBadge(isPlayerCad ? $"CAD ({Game.Profile.Imported.SourceFormat.ToUpper()})" : "PARAMETRIC", isPlayerCad ? Green : new("8e9eb5"), Colors.White, 12);
+        pTypeBadge.CustomMinimumSize = new(110, 26);
+        pHeadRow.AddChild(pTypeBadge);
+
+        var pNameLbl = new Label { Text = Game.Profile.Name, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        pNameLbl.AddThemeFontSizeOverride("font_size", 20);
+        pNameLbl.AddThemeColorOverride("font_color", Gold);
+        pBox.AddChild(pNameLbl);
+
+        var pSpecsLbl = new Label
+        {
+            Text = $"{Game.Profile.WidthCm:0.0} × {Game.Profile.LengthCm:0.0} cm  •  Speed: {Game.Profile.Speed:0.1} m/s  •  Accel: {Game.Profile.Acceleration:0.1} m/s²",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        pSpecsLbl.AddThemeFontSizeOverride("font_size", 14);
+        pSpecsLbl.AddThemeColorOverride("font_color", TextMuted);
+        pBox.AddChild(pSpecsLbl);
+
+        // Matchup Card: Active AI Opponent
+        var aiPanel = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        aiPanel.AddThemeStyleboxOverride("panel", CreateBox(CardInner, Gold, 8, 2, 18, 14));
+        matchupGrid.AddChild(aiPanel);
+
+        var aiBox = new VBoxContainer();
+        aiBox.AddThemeConstantOverride("separation", 8);
+        aiPanel.AddChild(aiBox);
+
+        var aiHeadRow = new HBoxContainer();
+        aiHeadRow.AddThemeConstantOverride("separation", 8);
+        aiBox.AddChild(aiHeadRow);
+
+        var aiBadge = CreateBadge("🤖 ACTIVE AI OPPONENT", Blue, Colors.White, 13);
+        aiBadge.CustomMinimumSize = new(170, 26);
+        aiHeadRow.AddChild(aiBadge);
+
+        var aiProf = Game.AiProfile ?? Game.Profile;
+        bool isAiCad = aiProf.Imported != null;
+        var aiTypeBadge = CreateBadge(isAiCad ? $"CAD ({aiProf.Imported.SourceFormat.ToUpper()})" : "PARAMETRIC", isAiCad ? Green : new("8e9eb5"), Colors.White, 12);
+        aiTypeBadge.CustomMinimumSize = new(110, 26);
+        aiHeadRow.AddChild(aiTypeBadge);
+
+        var aiNameLbl = new Label { Text = Game.AiProfile?.Name ?? "Standard BioBuzz AI", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        aiNameLbl.AddThemeFontSizeOverride("font_size", 20);
+        aiNameLbl.AddThemeColorOverride("font_color", TextWhite);
+        aiBox.AddChild(aiNameLbl);
+
+        var aiSpecsLbl = new Label
+        {
+            Text = $"{aiProf.WidthCm:0.0} × {aiProf.LengthCm:0.0} cm  •  Speed: {aiProf.Speed:0.1} m/s  •  Accel: {aiProf.Acceleration:0.1} m/s²",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        aiSpecsLbl.AddThemeFontSizeOverride("font_size", 14);
+        aiSpecsLbl.AddThemeColorOverride("font_color", TextMuted);
+        aiBox.AddChild(aiSpecsLbl);
+
+        // 2. Actions & Creation Card
+        var actionsCard = CreateCard(_dialogBody, "ROBOT WORKSHOP ACTIONS");
         var actionsRow = new HBoxContainer();
         actionsRow.AddThemeConstantOverride("separation", 12);
         actionsCard.AddChild(actionsRow);
@@ -1177,6 +1259,8 @@ public partial class SimulatorHud : CanvasLayer
             NavigateTo(ScreenType.RobotCreator);
         }, true);
         newParamBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        newParamBtn.CustomMinimumSize = new(0, 44);
+        newParamBtn.AddThemeFontSizeOverride("font_size", 16);
 
         var newCadBtn = CreateButton(actionsRow, "+ IMPORT CAD ROBOT", () =>
         {
@@ -1184,17 +1268,20 @@ public partial class SimulatorHud : CanvasLayer
             ImportSetup();
         });
         newCadBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        newCadBtn.CustomMinimumSize = new(0, 44);
+        newCadBtn.AddThemeFontSizeOverride("font_size", 16);
 
-        var resetRosterBtn = CreateButton(actionsRow, "RESTORE PRESETS", () =>
+        var resetRosterBtn = CreateButton(actionsRow, "RESTORE DEFAULT ROSTER", () =>
         {
             RobotRoster.ResetToDefaults();
             BuildRobotRoster();
         });
-        resetRosterBtn.CustomMinimumSize = new(180, 44);
+        resetRosterBtn.CustomMinimumSize = new(220, 44);
+        resetRosterBtn.AddThemeFontSizeOverride("font_size", 15);
 
-        // Robot List Cards
-        var rosterCard = CreateCard(_dialogBody, "SAVED ROBOTS IN ROSTER");
+        // 3. Saved Robots in Roster Cards
         var roster = RobotRoster.GetRoster();
+        var rosterCard = CreateCard(_dialogBody, $"SAVED ROBOTS IN ROSTER ({roster.Count})");
 
         for (int i = 0; i < roster.Count; i++)
         {
@@ -1203,16 +1290,17 @@ public partial class SimulatorHud : CanvasLayer
             bool isPlayer = robot.Name == Game.Profile.Name;
             bool isAi = robot.Name == Game.AiProfile?.Name;
             bool isCad = robot.Imported != null;
+            bool isLegal = robot.WidthCm <= 45.721f && robot.LengthCm <= 45.721f;
 
             var rPanel = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            rPanel.AddThemeStyleboxOverride("panel", CreateBox(CardInner, isPlayer ? Gold : isAi ? Blue : BtnNormalBorder, 8, isPlayer || isAi ? 2 : 1, 18, 14));
+            rPanel.AddThemeStyleboxOverride("panel", CreateBox(CardInner, Gold, 8, (isPlayer || isAi) ? 2 : 1, 20, 16));
             rosterCard.AddChild(rPanel);
 
             var rBox = new VBoxContainer();
             rBox.AddThemeConstantOverride("separation", 10);
             rPanel.AddChild(rBox);
 
-            // Header row with Name and Badges
+            // Header Row: Name & Badges
             var hRow = new HBoxContainer();
             hRow.AddThemeConstantOverride("separation", 10);
             rBox.AddChild(hRow);
@@ -1224,30 +1312,40 @@ public partial class SimulatorHud : CanvasLayer
 
             if (isPlayer)
             {
-                var plBadge = CreateBadge("PLAYER ACTIVE", Gold, Colors.Black, 13);
-                plBadge.CustomMinimumSize = new(130, 26);
+                var plBadge = CreateBadge("★ ACTIVE PLAYER", Gold, Colors.Black, 13);
+                plBadge.CustomMinimumSize = new(135, 26);
                 hRow.AddChild(plBadge);
             }
             if (isAi)
             {
-                var aBadge = CreateBadge("AI ACTIVE", Blue, Colors.White, 13);
-                aBadge.CustomMinimumSize = new(100, 26);
+                var aBadge = CreateBadge("🤖 ACTIVE AI", Blue, Colors.White, 13);
+                aBadge.CustomMinimumSize = new(110, 26);
                 hRow.AddChild(aBadge);
             }
+
             var typeBadge = CreateBadge(isCad ? $"CAD ({robot.Imported.SourceFormat.ToUpper()})" : "PARAMETRIC", isCad ? Green : new("8e9eb5"), Colors.White, 13);
-            typeBadge.CustomMinimumSize = new(120, 26);
+            typeBadge.CustomMinimumSize = new(125, 26);
             hRow.AddChild(typeBadge);
 
-            // Specs row
+            var legalBadge = CreateBadge(isLegal ? "18\" OK" : "OVERSIZED !", isLegal ? Green : Red, Colors.White, 13);
+            legalBadge.CustomMinimumSize = new(95, 26);
+            hRow.AddChild(legalBadge);
+
+            // Specs Row
+            string subsystemInfo = isCad
+                ? $"{robot.Imported.Parts.Count} CAD part{(robot.Imported.Parts.Count == 1 ? "" : "s")}  •  {robot.Imported.Joints.Count} joint{(robot.Imported.Joints.Count == 1 ? "" : "s")}"
+                : $"Turrets: {robot.Turrets}  •  Intakes: {robot.Intakes}";
+
             var specsLabel = new Label
             {
-                Text = $"{robot.WidthCm:0.0} × {robot.LengthCm:0.0} cm  •  Speed: {robot.Speed:0.0} m/s  •  Accel: {robot.Acceleration:0.0} m/s²  •  Turrets: {robot.Turrets}  •  Intakes: {robot.Intakes}"
+                Text = $"{robot.WidthCm:0.1} × {robot.LengthCm:0.1} cm ({robot.WidthCm / 2.54f:0.1}\" × {robot.LengthCm / 2.54f:0.1}\")  •  Speed: {robot.Speed:0.2} m/s  •  Accel: {robot.Acceleration:0.2} m/s²  •  Turn: {robot.TurnSpeed:0.2} rad/s  •  {subsystemInfo}",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart
             };
-            specsLabel.AddThemeFontSizeOverride("font_size", 15);
+            specsLabel.AddThemeFontSizeOverride("font_size", 14);
             specsLabel.AddThemeColorOverride("font_color", TextMuted);
             rBox.AddChild(specsLabel);
 
-            // Buttons row
+            // Buttons Row
             var bRow = new HBoxContainer();
             bRow.AddThemeConstantOverride("separation", 10);
             rBox.AddChild(bRow);
@@ -1260,7 +1358,8 @@ public partial class SimulatorHud : CanvasLayer
                 BuildRobotRoster();
             }, isPlayer);
             setPlayerBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            setPlayerBtn.CustomMinimumSize = new(0, 42);
+            setPlayerBtn.CustomMinimumSize = new(0, 40);
+            setPlayerBtn.AddThemeFontSizeOverride("font_size", 15);
 
             var setAiBtn = CreateButton(bRow, isAi ? "✓ ACTIVE AI" : "SET AS AI OPPONENT", () =>
             {
@@ -1269,7 +1368,8 @@ public partial class SimulatorHud : CanvasLayer
                 BuildRobotRoster();
             }, isAi);
             setAiBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            setAiBtn.CustomMinimumSize = new(0, 42);
+            setAiBtn.CustomMinimumSize = new(0, 40);
+            setAiBtn.AddThemeFontSizeOverride("font_size", 15);
 
             var editBtn = CreateButton(bRow, "EDIT", () =>
             {
@@ -1277,7 +1377,8 @@ public partial class SimulatorHud : CanvasLayer
                 if (_draft.Imported != null) ImportSetup();
                 else NavigateTo(ScreenType.RobotCreator);
             });
-            editBtn.CustomMinimumSize = new(90, 42);
+            editBtn.CustomMinimumSize = new(90, 40);
+            editBtn.AddThemeFontSizeOverride("font_size", 15);
 
             var dupBtn = CreateButton(bRow, "DUPLICATE", () =>
             {
@@ -1286,7 +1387,8 @@ public partial class SimulatorHud : CanvasLayer
                 RobotRoster.AddOrUpdate(dup);
                 BuildRobotRoster();
             });
-            dupBtn.CustomMinimumSize = new(110, 42);
+            dupBtn.CustomMinimumSize = new(110, 40);
+            dupBtn.AddThemeFontSizeOverride("font_size", 15);
 
             if (roster.Count > 1)
             {
@@ -1295,7 +1397,8 @@ public partial class SimulatorHud : CanvasLayer
                     RobotRoster.Remove(index);
                     BuildRobotRoster();
                 });
-                delBtn.CustomMinimumSize = new(90, 42);
+                delBtn.CustomMinimumSize = new(90, 40);
+                delBtn.AddThemeFontSizeOverride("font_size", 15);
             }
         }
 
@@ -1303,7 +1406,7 @@ public partial class SimulatorHud : CanvasLayer
         var footer = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         _dialogBody.AddChild(footer);
         var backBtn = CreateButton(footer, "BACK [ESC]", GoBack);
-        backBtn.CustomMinimumSize = new(180, 52);
+        backBtn.CustomMinimumSize = new(180, 46);
     }
 
     // =========================================================================
@@ -1850,7 +1953,7 @@ public partial class SimulatorHud : CanvasLayer
     private VBoxContainer CreateCard(Node parent, string title = "")
     {
         var panel = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        panel.AddThemeStyleboxOverride("panel", CreateBox(CardBg, BtnNormalBorder, 8, 1, 24, 18));
+        panel.AddThemeStyleboxOverride("panel", CreateBox(CardBg, Gold, 8, 1, 24, 18));
         parent.AddChild(panel);
 
         var vbox = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -1919,7 +2022,7 @@ public partial class SimulatorHud : CanvasLayer
         {
             Text = format(value),
             HorizontalAlignment = HorizontalAlignment.Right,
-            CustomMinimumSize = new(180, 0)
+            CustomMinimumSize = new(140, 0)
         };
         valLabel.AddThemeFontSizeOverride("font_size", 18);
         valLabel.AddThemeColorOverride("font_color", Gold);

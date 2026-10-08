@@ -77,7 +77,7 @@ public partial class SimulatorHud
 
             // Card 2: STL
             var stlCard = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            stlCard.AddThemeStyleboxOverride("panel", CreateBox(CardInner, Green, 8, 1, 18, 16));
+            stlCard.AddThemeStyleboxOverride("panel", CreateBox(CardInner, Gold, 8, 1, 18, 16));
             cadGrid.AddChild(stlCard);
 
             var stlBox = new VBoxContainer();

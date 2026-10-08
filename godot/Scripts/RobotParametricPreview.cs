@@ -10,11 +10,12 @@ public partial class RobotParametricPreview : SubViewportContainer
     public override void _Ready()
     {
         Stretch = true;
-        CustomMinimumSize = new(450, 240);
+        if (CustomMinimumSize == Vector2.Zero)
+            CustomMinimumSize = new(380, 240);
 
         _viewport = new SubViewport
         {
-            Size = new(450, 240),
+            Size = new Vector2I((int)CustomMinimumSize.X, (int)CustomMinimumSize.Y),
             OwnWorld3D = true,
             TransparentBg = false,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always

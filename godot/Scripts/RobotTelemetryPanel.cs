@@ -39,7 +39,7 @@ public partial class RobotTelemetryPanel : Control
         var robot=Game.Player; if (robot==null || _font==null) return;
         Color muted=new("9097a7"), white=new("e2e5ed"), green=new("62e5a4"), red=new("ff667b");
         DrawRect(new(0,0,304,408),new Color(.065f,.075f,.095f,.95f));
-        DrawRect(new(0,0,304,408),new("343a48"),false,1);
+        DrawRect(new(0,0,304,408),VisualFactory.Gold,false,1);
         string title=Game.Profile.Name ?? "ROBOT";
         if (title.Length>15) title=title[..15];
         Text(title.ToUpperInvariant(),14,27,VisualFactory.Gold,16);
