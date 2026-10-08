@@ -36,9 +36,11 @@ public partial class SimulatorHud
         name.TextChanged += text => _draft.Name = text;
         nameRow.AddChild(name);
 
+        bool valid = false;
+
         if (definition.Parts.Count == 0)
         {
-            // Two Big Cards Container: Option 1 (URDF) vs Option 2 (STL)
+            // Initial State: Choose Between URDF (Option 1) and STL (Option 2)
             var cadOptionsCard = CreateCard(_dialogBody, "CHOOSE CAD IMPORT METHOD & INSTRUCTIONS");
             var cadGrid = new GridContainer { Columns = 2 };
             cadGrid.AddThemeConstantOverride("h_separation", 18);
@@ -61,7 +63,7 @@ public partial class SimulatorHud
 
             var urdfInst = new Label
             {
-                Text = "• Automatic kinematics from Onshape, Fusion 360, or SolidWorks URDF exporters\n• Hinges, sliders, limits, and visual STL links are placed and connected automatically\n• No manual joint positioning or pivot calibration required",
+                Text = "• Automatic kinematics from Onshape, Fusion 360, or SolidWorks URDF exporters\n• Hinges, sliders, travel limits, and visual STL meshes are positioned and wired automatically\n• No manual unit calibration, orientation tweaking, or joint setup required!",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
                 SizeFlagsVertical = Control.SizeFlags.ExpandFill
             };
@@ -89,7 +91,7 @@ public partial class SimulatorHud
 
             var stlInst = new Label
             {
-                Text = "• Import individual 3D .stl geometry files for chassis, arms, and sliders\n• Manually configure joint types, travel limits, and motors in Mechanism Editor\n• Full flexibility for custom FTC CAD parts and subassemblies",
+                Text = "• Import individual 3D .stl geometry files for chassis, arms, and mechanisms\n• Calibrate CAD units (mm/cm/in), up-axis, and forward orientation\n• Manually configure joints, travel limits, and motors in Mechanism Editor",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
                 SizeFlagsVertical = Control.SizeFlags.ExpandFill
             };
@@ -101,7 +103,7 @@ public partial class SimulatorHud
             stlBtn.Disabled = _importBusy;
             stlBtn.CustomMinimumSize = new(0, 48);
 
-            // Demos & Examples Row
+            // Sample CAD Presets
             var demoCard = CreateCard(_dialogBody, "SAMPLE CAD PRESETS");
             var demoRow = new HBoxContainer();
             demoRow.AddThemeConstantOverride("separation", 12);
@@ -113,7 +115,7 @@ public partial class SimulatorHud
                 {
                     _draft.Imported = RobotMechanismSample.Load();
                     _draft.Name = "Articulated STL demo";
-                    _importMessage = "Demo loaded. Open RIGID GROUPS / JOINTS / MOTORS.";
+                    _importMessage = "Demo loaded. Review units & orientation, preview 3D model, or configure mechanisms.";
                 }
                 catch (Exception ex) { _importMessage = ex.Message; }
                 ImportSetup();
@@ -130,7 +132,7 @@ public partial class SimulatorHud
                     _draft.Imported = new ImportedRobotDefinition();
                     _draft.Imported.Parts.Add(imported);
                     _draft.Name = "Fusion STL example";
-                    _importMessage = "Example loaded. Drag the preview, then SAVE + TEST IN PRACTICE.";
+                    _importMessage = "Example loaded. Review 3D preview, then SAVE + APPLY ACTIVE.";
                 }
                 catch (Exception ex) { _importMessage = ex.Message; }
                 ImportSetup();
@@ -139,9 +141,22 @@ public partial class SimulatorHud
             sampleBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             sampleBtn.CustomMinimumSize = new(0, 44);
         }
-        else
+        else if (definition.SourceFormat == "urdf")
         {
-            var sourceCard = CreateCard(_dialogBody, definition.SourceFormat == "urdf" ? "CAD SOURCE: URDF KINEMATIC PACKAGE" : "CAD SOURCE: STL SUBASSEMBLIES");
+            // =========================================================================
+            // URDF MODE: Kinematics & coordinate frames are automatic!
+            // No need for units/orientation or manual mechanism articulation setup.
+            // =========================================================================
+            var sourceCard = CreateCard(_dialogBody, "CAD SOURCE: URDF KINEMATIC PACKAGE");
+
+            var urdfNotice = new Label
+            {
+                Text = "URDF kinematics active: Joint types, rotation axes, motion limits, and parent-child linkages are automatically imported from the URDF description. No manual unit calibration or articulation setup is needed.",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart
+            };
+            urdfNotice.AddThemeFontSizeOverride("font_size", 15);
+            urdfNotice.AddThemeColorOverride("font_color", TextMuted);
+            sourceCard.AddChild(urdfNotice);
 
             var importRow = new HBoxContainer();
             importRow.AddThemeConstantOverride("separation", 12);
@@ -153,55 +168,107 @@ public partial class SimulatorHud
             urdfBtn.CustomMinimumSize = new(0, 48);
 
             var stlBtn = Button(importRow, _importBusy ? "IMPORTING…" : "ADD STL SUBASSEMBLIES…", SelectStl);
-            stlBtn.Disabled = _importBusy || definition.Parts.Count >= 32 || definition.SourceFormat == "urdf";
+            stlBtn.Disabled = true; // URDF kinematic packages cannot mix with loose STL files
             stlBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             stlBtn.CustomMinimumSize = new(0, 48);
 
-            if (definition.SourceFormat == "urdf")
+            var newStlBtn = Button(sourceCard, "START NEW MANUAL STL ROBOT", () =>
             {
-                var newStlBtn = Button(sourceCard, "START NEW MANUAL STL ROBOT", () =>
+                _draft.Imported = new ImportedRobotDefinition();
+                _importMessage = "New STL draft. Configure joints manually after importing geometry.";
+                ImportSetup();
+            });
+            newStlBtn.Disabled = _importBusy;
+            newStlBtn.CustomMinimumSize = new(0, 44);
+
+            // 3D Preview Card
+            var previewCard = CreateCard(_dialogBody, "3D ROBOT PREVIEW & FTC 18\" SIZING");
+            try
+            {
+                var bounds = ImportedRobot.Bounds(definition);
+                previewCard.AddChild(new RobotImportPreview { Definition = definition.Copy(), CustomMinimumSize = new(450, 240) });
+
+                var statsLabel = new Label
                 {
-                    _draft.Imported = new ImportedRobotDefinition();
-                    _importMessage = "New STL draft. Configure joints manually after importing geometry.";
-                    ImportSetup();
-                });
-                newStlBtn.Disabled = _importBusy;
-                newStlBtn.CustomMinimumSize = new(0, 44);
+                    Text = $"Width {bounds.Size.X * 100:0.0} × length {bounds.Size.Z * 100:0.0} × height {bounds.Size.Y * 100:0.0} cm\n{definition.Parts.Count} STL meshes • {ImportedRobot.TriangleCount(definition):N0} triangles\nKinematic chassis + {Math.Max(0, definition.Bodies.Count - 1)} dynamic links • {definition.Joints.Count} automatic joints",
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart
+                };
+                statsLabel.AddThemeFontSizeOverride("font_size", 16);
+                statsLabel.AddThemeColorOverride("font_color", TextWhite);
+                previewCard.AddChild(statsLabel);
+
+                if (bounds.Size.X > .4572f || bounds.Size.Z > .4572f)
+                {
+                    var warnLabel = new Label
+                    {
+                        Text = "Footprint exceeds 45.72 cm (18\"). Check scale or URDF mesh package.",
+                        AutowrapMode = TextServer.AutowrapMode.WordSmart
+                    };
+                    warnLabel.AddThemeFontSizeOverride("font_size", 16);
+                    warnLabel.AddThemeColorOverride("font_color", Red);
+                    previewCard.AddChild(warnLabel);
+                }
+
+                RobotMechanismValidation.ValidateReady(definition);
+                valid = true;
             }
-        }
-
-        // Step 2: Scale & Orientation Calibration Card
-        var calibCard = CreateCard(_dialogBody, "STEP 2: UNITS & ORIENTATION");
-
-        if (definition.SourceFormat == "stl")
-        {
-            Choice(calibCard, "STL export units:", new[] { "mm", "cm", "m", "in" }, definition.Units, value => { definition.Units = value; ImportSetup(); });
-            Choice(calibCard, "Vertical up-axis in CAD:", new[] { "Z", "Y" }, definition.UpAxis, value => { definition.UpAxis = value; ImportSetup(); });
+            catch (Exception ex)
+            {
+                var errLabel = new Label { Text = ex.Message, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+                errLabel.AddThemeFontSizeOverride("font_size", 16);
+                errLabel.AddThemeColorOverride("font_color", Red);
+                previewCard.AddChild(errLabel);
+            }
         }
         else
         {
-            var urdfInfo = new Label { Text = "URDF imported automatically • metres / Z-up • review joints before applying", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            urdfInfo.AddThemeFontSizeOverride("font_size", 16);
-            urdfInfo.AddThemeColorOverride("font_color", Gold);
-            calibCard.AddChild(urdfInfo);
-        }
+            // =========================================================================
+            // STL MODE: Manual assembly, unit calibration, orientation & articulations
+            // =========================================================================
+            var sourceCard = CreateCard(_dialogBody, "CAD SOURCE: STL SUBASSEMBLIES");
 
-        var orientRow = new HBoxContainer();
-        orientRow.AddThemeConstantOverride("separation", 12);
-        calibCard.AddChild(orientRow);
+            var importRow = new HBoxContainer();
+            importRow.AddThemeConstantOverride("separation", 12);
+            sourceCard.AddChild(importRow);
 
-        var orientBtn = Button(orientRow, $"FRONT ORIENTATION: {definition.QuarterTurns * 90}° (Godot forward = -Z)", () =>
-        {
-            definition.QuarterTurns = (definition.QuarterTurns + 1) % 4;
-            ImportSetup();
-        });
-        orientBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        orientBtn.CustomMinimumSize = new(0, 44);
+            var urdfBtn = Button(importRow, _importBusy ? "IMPORTING…" : "IMPORT URDF + EXISTING JOINTS…", SelectUrdf);
+            urdfBtn.Disabled = _importBusy;
+            urdfBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            urdfBtn.CustomMinimumSize = new(0, 48);
 
-        // Step 3: 3D Visual Validation & Sizing Card
-        bool valid = false;
-        if (definition.Parts.Count > 0)
-        {
+            var stlBtn = Button(importRow, _importBusy ? "IMPORTING…" : "ADD STL SUBASSEMBLIES…", SelectStl);
+            stlBtn.Disabled = _importBusy || definition.Parts.Count >= 32;
+            stlBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            stlBtn.CustomMinimumSize = new(0, 48);
+
+            // Step 2: Scale & Orientation Calibration Card with explanations
+            var calibCard = CreateCard(_dialogBody, "STEP 2: UNITS & ORIENTATION CALIBRATION");
+
+            var calibHelp = new Label
+            {
+                Text = "• STL export units: STL files do not store unit dimensions. Choose the unit used in your CAD export (e.g. mm in Fusion/SolidWorks) so the robot is scaled to real-world FTC sizing.\n• Up-Axis: CAD programs use Z-up (Onshape) or Y-up (Fusion 360). Pick the vertical axis of your model.\n• Front orientation: In Godot, forward driving is -Z. Rotate in 90° steps until the front/intake points forward.",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart
+            };
+            calibHelp.AddThemeFontSizeOverride("font_size", 15);
+            calibHelp.AddThemeColorOverride("font_color", TextMuted);
+            calibCard.AddChild(calibHelp);
+
+            Choice(calibCard, "STL export units:", new[] { "mm", "cm", "m", "in" }, definition.Units, value => { definition.Units = value; ImportSetup(); });
+            Choice(calibCard, "Vertical up-axis in CAD:", new[] { "Z", "Y" }, definition.UpAxis, value => { definition.UpAxis = value; ImportSetup(); });
+
+            var orientRow = new HBoxContainer();
+            orientRow.AddThemeConstantOverride("separation", 12);
+            calibCard.AddChild(orientRow);
+
+            var orientBtn = Button(orientRow, $"FRONT ORIENTATION: {definition.QuarterTurns * 90}° (Godot forward = -Z)", () =>
+            {
+                definition.QuarterTurns = (definition.QuarterTurns + 1) % 4;
+                ImportSetup();
+            });
+            orientBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            orientBtn.CustomMinimumSize = new(0, 44);
+
+            // Step 3: 3D Visual Validation & Sizing Card
             var previewCard = CreateCard(_dialogBody, "STEP 3: 3D PREVIEW & FTC 18\" SIZING");
 
             try
@@ -222,7 +289,7 @@ public partial class SimulatorHud
                 {
                     var warnLabel = new Label
                     {
-                        Text = "Footprint exceeds 45.72 cm. Check scale / competition constraints.",
+                        Text = "Footprint exceeds 45.72 cm (18\"). Check scale units or competition constraints.",
                         AutowrapMode = TextServer.AutowrapMode.WordSmart
                     };
                     warnLabel.AddThemeFontSizeOverride("font_size", 16);
@@ -242,44 +309,50 @@ public partial class SimulatorHud
             }
 
             // Subassembly list
-            if (definition.Parts.Count > 0)
+            var partsCard = CreateCard(_dialogBody, "SUBASSEMBLIES & PARTS LIST");
+            var partsHelp = new Label
             {
-                var partsCard = CreateCard(_dialogBody, "SUBASSEMBLIES & PARTS LIST");
-                foreach (var part in definition.Parts.ToArray())
-                {
-                    var row = new HBoxContainer();
-                    partsCard.AddChild(row);
-                    var groupName = new LineEdit { Text = part.Name, MaxLength = 100, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-                    groupName.AddThemeFontSizeOverride("font_size", 16);
-                    groupName.TextChanged += text => part.Name = text;
-                    row.AddChild(groupName);
-                    var remBtn = Button(row, "REMOVE", () => { definition.Parts.Remove(part); _importMessage = ""; ImportSetup(); });
-                    remBtn.Disabled = _importBusy;
-                }
+                Text = "Each subassembly file below represents a rigid group or component of your robot. Name each part clearly.",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart
+            };
+            partsHelp.AddThemeFontSizeOverride("font_size", 15);
+            partsHelp.AddThemeColorOverride("font_color", TextMuted);
+            partsCard.AddChild(partsHelp);
+
+            foreach (var part in definition.Parts.ToArray())
+            {
+                var row = new HBoxContainer();
+                partsCard.AddChild(row);
+                var groupName = new LineEdit { Text = part.Name, MaxLength = 100, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+                groupName.AddThemeFontSizeOverride("font_size", 16);
+                groupName.TextChanged += text => part.Name = text;
+                row.AddChild(groupName);
+                var remBtn = Button(row, "REMOVE", () => { definition.Parts.Remove(part); _importMessage = ""; ImportSetup(); });
+                remBtn.Disabled = _importBusy;
             }
+
+            // Step 4: Articulations, Joints & Motors
+            var mechCard = CreateCard(_dialogBody, "STEP 4: MECHANISMS & ARTICULATIONS");
+            var mechHelp = new Label
+            {
+                Text = "Define movable links, hinges, sliders, and motor actuators. Group parts into rigid bodies and connect them with physical constraints. In gameplay: [I] selects joint, [U]/[O] moves.",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart
+            };
+            mechHelp.AddThemeFontSizeOverride("font_size", 15);
+            mechHelp.AddThemeColorOverride("font_color", TextMuted);
+            mechCard.AddChild(mechHelp);
+
+            var mechBtn = Button(mechCard, "RIGID GROUPS / JOINTS / MOTORS", MechanismSetup);
+            mechBtn.Disabled = definition.Parts.Count == 0 || _importBusy;
+            mechBtn.CustomMinimumSize = new(0, 48);
         }
-
-        // Step 4: Articulations, Joints & Motors
-        var mechCard = CreateCard(_dialogBody, "STEP 4: MECHANISMS & ARTICULATIONS");
-        var mechBtn = Button(mechCard, "RIGID GROUPS / JOINTS / MOTORS", MechanismSetup);
-        mechBtn.Disabled = definition.Parts.Count == 0 || _importBusy;
-        mechBtn.CustomMinimumSize = new(0, 48);
-
-        var mechHelp = new Label
-        {
-            Text = "Drive uses the existing kinematic chassis. Imported links use box collisions; internal self-collisions are disabled. Intake/shooting remain gameplay anchors. Joint motors: I selects, U/O moves.",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart
-        };
-        mechHelp.AddThemeFontSizeOverride("font_size", 15);
-        mechHelp.AddThemeColorOverride("font_color", TextMuted);
-        mechCard.AddChild(mechHelp);
 
         if (!string.IsNullOrEmpty(_importMessage))
         {
             var msgLabel = new Label { Text = _importMessage, AutowrapMode = TextServer.AutowrapMode.WordSmart };
             msgLabel.AddThemeFontSizeOverride("font_size", 16);
             msgLabel.AddThemeColorOverride("font_color", Gold);
-            _content.AddChild(msgLabel);
+            _dialogBody.AddChild(msgLabel);
         }
 
         if (definition.ImportNotes.Count > 0)
@@ -287,7 +360,7 @@ public partial class SimulatorHud
             var notesLabel = new Label { Text = string.Join("\n", definition.ImportNotes), AutowrapMode = TextServer.AutowrapMode.WordSmart };
             notesLabel.AddThemeFontSizeOverride("font_size", 15);
             notesLabel.AddThemeColorOverride("font_color", TextMuted);
-            _content.AddChild(notesLabel);
+            _dialogBody.AddChild(notesLabel);
         }
 
         // Bottom Actions
@@ -295,55 +368,64 @@ public partial class SimulatorHud
         actionsRow.AddThemeConstantOverride("separation", 14);
         _dialogBody.AddChild(actionsRow);
 
-        var apply = Button(actionsRow, "SAVE + TEST IN PRACTICE", () =>
+        if (definition.Parts.Count > 0)
         {
-            try
+            var apply = Button(actionsRow, "SAVE + APPLY ACTIVE", () =>
             {
-                _draft.Save();
-                Game.Profile = _draft.Copy();
-                Game.Practice = true;
-                Game.Reset();
-                _draft = null;
-            }
-            catch (Exception ex)
-            {
-                _importMessage = "Cannot apply: " + ex.Message;
-                ImportSetup();
-            }
-        });
-        apply.Disabled = !valid || _importBusy;
-        apply.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        apply.CustomMinimumSize = new(0, 52);
+                try
+                {
+                    _draft.Validate();
+                    _draft.Save();
+                    Game.Profile = _draft.Copy();
+                    Game.Status = $"Applied '{_draft.Name}' as active robot profile!";
+                    _draft = null;
+                    NavigateTo(ScreenType.Main, true);
+                }
+                catch (Exception ex)
+                {
+                    _importMessage = "Cannot apply: " + ex.Message;
+                    ImportSetup();
+                }
+            });
+            apply.Disabled = !valid || _importBusy;
+            apply.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            apply.CustomMinimumSize = new(0, 52);
 
-        var addToListBtn = Button(actionsRow, "SAVE TO ROBOT LIST", () =>
-        {
-            try
+            var addToListBtn = Button(actionsRow, "SAVE TO ROBOT LIST", () =>
             {
-                _draft.Validate();
-                RobotRoster.AddOrUpdate(_draft);
-                Game.Status = $"Saved '{_draft.Name}' to robot roster!";
-                NavigateTo(ScreenType.RobotRoster);
-            }
-            catch (Exception ex)
-            {
-                _importMessage = "Cannot save: " + ex.Message;
-                ImportSetup();
-            }
-        });
-        addToListBtn.Disabled = !valid || _importBusy;
-        addToListBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        addToListBtn.CustomMinimumSize = new(0, 52);
+                try
+                {
+                    _draft.Validate();
+                    RobotRoster.AddOrUpdate(_draft);
+                    Game.Status = $"Saved '{_draft.Name}' to robot roster!";
+                    NavigateTo(ScreenType.RobotRoster);
+                }
+                catch (Exception ex)
+                {
+                    _importMessage = "Cannot save: " + ex.Message;
+                    ImportSetup();
+                }
+            });
+            addToListBtn.Disabled = !valid || _importBusy;
+            addToListBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            addToListBtn.CustomMinimumSize = new(0, 52);
+        }
 
         var paramBtn = Button(actionsRow, "USE PARAMETRIC ROBOT", () =>
         {
+            _draft = Game.Profile.Copy();
             _draft.Imported = null;
-            RobotSetup();
+            NavigateTo(ScreenType.RobotCreator);
         });
         paramBtn.Disabled = _importBusy;
         paramBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         paramBtn.CustomMinimumSize = new(0, 52);
 
-        var backBtn = Button(actionsRow, "BACK / DISCARD", Back);
+        var backBtn = Button(actionsRow, "BACK / DISCARD", () =>
+        {
+            _draft = null;
+            GoBack();
+        });
         backBtn.CustomMinimumSize = new(180, 52);
     }
     private void AddImportText(string text) => _content.AddChild(new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart });

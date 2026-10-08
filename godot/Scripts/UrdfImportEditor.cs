@@ -24,7 +24,7 @@ public partial class SimulatorHud
             var definition = parsed.Store();
             draft.Imported = definition; draft.Name = parsed.Name;
             _bodySelection = "chassis"; _jointSelection = "";
-            _importMessage = $"URDF imported: {definition.Bodies.Count} bodies, {definition.Joints.Count} existing joints. Review → SAVE + TEST IN PRACTICE.";
+            _importMessage = $"URDF imported: {definition.Bodies.Count} bodies, {definition.Joints.Count} existing joints. Review → SAVE + APPLY ACTIVE.";
         }
         catch (Exception ex) { _importMessage = "URDF import failed: " + ex.Message; }
         finally { _importBusy = false; if (_draft == draft && IsInsideTree()) ImportSetup(); }

@@ -114,7 +114,7 @@ public partial class SimulatorHud
                     MaxValue = ((selected.LimitsEnabled ? selected.Upper : revolute ? Mathf.Pi : .5f) + selected.ReferencePosition) * display, Step = .001, Value = selected.ReferencePosition * display };
                 slider.ValueChanged += value => { preview.SetJointPose(selected.Id, (float)value / display - selected.ReferencePosition); position.Text = $"Position: {value:0.000} " + (revolute ? "deg" : d.Units); }; _content.AddChild(slider);
             }
-            AddImportText("Configuration valid. Back → SAVE + TEST IN PRACTICE to apply.");
+            AddImportText("Configuration valid. Back → SAVE + APPLY ACTIVE to apply.");
         }
         catch (Exception ex) { AddImportText("Needs attention: " + ex.Message); }
         Button(_content, "BACK TO ROBOT IMPORT", ImportSetup);

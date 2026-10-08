@@ -4,22 +4,24 @@ public partial class RobotParametricPreview : SubViewportContainer
 {
     public RobotProfile Profile;
     private Node3D _model;
+    private SubViewport _viewport;
+    private Camera3D _camera;
 
     public override void _Ready()
     {
         Stretch = true;
         CustomMinimumSize = new(450, 240);
 
-        var viewport = new SubViewport
+        _viewport = new SubViewport
         {
             Size = new(450, 240),
             OwnWorld3D = true,
             TransparentBg = false,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always
         };
-        AddChild(viewport);
+        AddChild(_viewport);
 
-        viewport.AddChild(new WorldEnvironment
+        _viewport.AddChild(new WorldEnvironment
         {
             Environment = new Godot.Environment
             {
@@ -32,16 +34,16 @@ public partial class RobotParametricPreview : SubViewportContainer
         });
 
         _model = BuildParametricMesh(Profile);
-        viewport.AddChild(_model);
+        _viewport.AddChild(_model);
 
         var light = new DirectionalLight3D { RotationDegrees = new(-45, -30, 0), LightEnergy = 1.2f };
-        viewport.AddChild(light);
+        _viewport.AddChild(light);
 
         float w = (Profile?.WidthCm ?? 45.72f) / 100f;
         float l = (Profile?.LengthCm ?? 45.72f) / 100f;
         float extent = Mathf.Max(w, l);
         var center = new Vector3(0, 0.12f, 0);
-        var camera = new Camera3D
+        _camera = new Camera3D
         {
             Current = true,
             Fov = 35,
@@ -49,8 +51,8 @@ public partial class RobotParametricPreview : SubViewportContainer
             Near = 0.001f,
             Far = 30
         };
-        viewport.AddChild(camera);
-        camera.LookAt(center);
+        _viewport.AddChild(_camera);
+        _camera.LookAt(center);
 
         GuiInput += input =>
         {
@@ -61,6 +63,32 @@ public partial class RobotParametricPreview : SubViewportContainer
             }
         };
         TooltipText = "Drag left mouse to orbit the 3D robot chassis preview.";
+    }
+
+    public void UpdateProfile(RobotProfile newProfile)
+    {
+        Profile = newProfile;
+        if (_viewport != null)
+        {
+            float prevRotY = _model != null ? _model.Rotation.Y : 0f;
+            if (_model != null)
+            {
+                _model.QueueFree();
+            }
+            _model = BuildParametricMesh(Profile);
+            _model.Rotation = new Vector3(0, prevRotY, 0);
+            _viewport.AddChild(_model);
+
+            float w = (Profile?.WidthCm ?? 45.72f) / 100f;
+            float l = (Profile?.LengthCm ?? 45.72f) / 100f;
+            float extent = Mathf.Max(w, l);
+            var center = new Vector3(0, 0.12f, 0);
+            if (_camera != null)
+            {
+                _camera.Position = center + new Vector3(1.7f, 1.2f, 1.7f) * extent * 1.5f;
+                _camera.LookAt(center);
+            }
+        }
     }
 
     private static Node3D BuildParametricMesh(RobotProfile profile)
