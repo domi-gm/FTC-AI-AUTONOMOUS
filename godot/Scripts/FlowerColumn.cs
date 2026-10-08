@@ -8,7 +8,9 @@ public sealed class FlowerColumn
     public const float Top = .5461f;
     public void Store(GamePiece ball)
     {
-        float height = .008f + Balls.Sum(b => b.Radius * 2) + ball.Radius;
+        float total = 0;
+        for (int i = 0; i < Balls.Count; i++) total += Balls[i].Radius * 2;
+        float height = .008f + total + ball.Radius;
         ball.GlobalPosition = Base + Vector3.Up * height;
         ball.Stored = false; ball.Freeze = false; ball.CollisionLayer = 2; ball.CollisionMask = 7;
         Balls.Add(ball);
@@ -16,8 +18,22 @@ public sealed class FlowerColumn
     public void Arrange() { }
     public void Update()
     {
-        Balls.RemoveAll(b => !GodotObject.IsInstanceValid(b) || !Inside(b));
-        Balls.Sort((a,b) => a.GlobalPosition.Y.CompareTo(b.GlobalPosition.Y));
+        for (int i = Balls.Count - 1; i >= 0; i--)
+        {
+            var b = Balls[i];
+            if (!GodotObject.IsInstanceValid(b) || !Inside(b)) Balls.RemoveAt(i);
+        }
+        for (int i = 1; i < Balls.Count; i++)
+        {
+            var key = Balls[i];
+            int j = i - 1;
+            while (j >= 0 && Balls[j].GlobalPosition.Y > key.GlobalPosition.Y)
+            {
+                Balls[j + 1] = Balls[j];
+                j--;
+            }
+            Balls[j + 1] = key;
+        }
     }
     private bool Inside(GamePiece ball)
     {
@@ -37,7 +53,31 @@ public sealed class FlowerColumn
         ball.GlobalPosition = Base + Inward * .16f + Vector3.Up * (bottom ? ball.Radius + .015f : Top + .1f);
         ball.LinearVelocity = Inward * .45f; ball.Sleeping = false; return ball;
     }
-    public PieceKind? Owner => Balls.Where(b => b.Position.Y + b.Radius > .1024f && b.Position.Y - b.Radius < Top)
-        .Where(b => b.Kind != PieceKind.Pollen).Select(b => (PieceKind?)b.Kind).LastOrDefault();
-    public int ScoringCount => Balls.Count(b => b.Position.Y + b.Radius > .1024f && b.Position.Y - b.Radius < Top);
+    public PieceKind? Owner
+    {
+        get
+        {
+            PieceKind? owner = null;
+            for (int i = 0; i < Balls.Count; i++)
+            {
+                var b = Balls[i];
+                if (b.Position.Y + b.Radius > .1024f && b.Position.Y - b.Radius < Top && b.Kind != PieceKind.Pollen)
+                    owner = b.Kind;
+            }
+            return owner;
+        }
+    }
+    public int ScoringCount
+    {
+        get
+        {
+            int count = 0;
+            for (int i = 0; i < Balls.Count; i++)
+            {
+                var b = Balls[i];
+                if (b.Position.Y + b.Radius > .1024f && b.Position.Y - b.Radius < Top) count++;
+            }
+            return count;
+        }
+    }
 }

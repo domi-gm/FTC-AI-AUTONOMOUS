@@ -5,6 +5,7 @@ public partial class GamePiece : RigidBody3D
 {
     public PieceKind Kind;
     public bool Stored;
+    public bool Preload;
     public int ShotRobotIndex=-1;
     public bool ShotConfirmed;
     public float Radius => Kind == PieceKind.Pollen ? .03556f : .04572f;

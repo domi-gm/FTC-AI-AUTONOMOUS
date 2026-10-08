@@ -15,7 +15,9 @@ public partial class Simulation : Node3D
     public SimulatorHud Hud;
     public PracticePath PathEditor;
     public AimPreview Aim;
-    public bool Started, Paused, Practice = true, TwoPlayers, AutonomousDrill;
+    public bool Started, Paused, Practice = true, TwoPlayers, AutonomousDrill, TrainingGround;
+    private readonly HashSet<GamePiece> _redScoredHive = new();
+    private readonly HashSet<GamePiece> _blueScoredHive = new();
     public bool Finished => !Practice && _elapsed >= (AutonomousDrill ? 30 : 158);
     public bool Running => Started && !Paused && !Finished;
     public bool DrivingAllowed => Running && (Practice || Elapsed < 30 || Elapsed >= 38);
@@ -58,6 +60,7 @@ public partial class Simulation : Node3D
         if (_session != null) { RemoveChild(_session); _session.QueueFree(); }
         Balls.Clear(); Robots.Clear(); _pausedVelocities.Clear(); Elapsed = 0; Paused = false; Started = start;
         _observationTime=0; _wasTransition=false;
+        _redScoredHive.Clear(); _blueScoredHive.Clear();
         if (PathEditor != null) PathEditor.Following = false;
         Flowers.Clear(); HumanStock[0].Clear(); HumanStock[1].Clear();
         HumanTokens[0] = HumanTokens[1] = _redLastTips = _blueLastTips = 0;
@@ -73,6 +76,15 @@ public partial class Simulation : Node3D
             robot.Rotation = new(0, i >= 2 ? Mathf.Pi : 0, 0);
             _session.AddChild(robot); Robots.Add(robot);
             for (int j = 0; j < 4; j++) robot.Inventory.Add(PieceKind.Pollen);
+        }
+        if (TrainingGround)
+        {
+            for (int i = 1; i < Robots.Count; i++)
+            {
+                Robots[i].Visible = false;
+                Robots[i].CollisionLayer = 0;
+                Robots[i].ProcessMode = ProcessModeEnum.Disabled;
+            }
         }
         // 40 POLLEN + 8 NECTAR roșii + 8 NECTAR albastre, inclusiv inventarele.
         for (int alliance = 0; alliance < 2; alliance++)
@@ -94,7 +106,12 @@ public partial class Simulation : Node3D
                 HumanStock[alliance].Add(ball);
             }
             var hive = red ? RedHive : BlueHive;
-            for (int i = 0; i < 3; i++) hive.Store(SpawnBall(red ? PieceKind.RedNectar : PieceKind.BlueNectar, hive.Position), hive.UpSide);
+            for (int i = 0; i < 3; i++)
+            {
+                var ball = SpawnBall(red ? PieceKind.RedNectar : PieceKind.BlueNectar, hive.Position);
+                ball.Preload = true;
+                hive.Store(ball, hive.UpSide);
+            }
         }
         Vector3[] inward = { Vector3.Right, Vector3.Back, Vector3.Left, Vector3.Forward };
         for (int i = 0; i < 4; i++)
@@ -114,6 +131,8 @@ public partial class Simulation : Node3D
     }
     public void RemoveBall(GamePiece ball)
     {
+        _redScoredHive.Remove(ball);
+        _blueScoredHive.Remove(ball);
         foreach (var hive in new[] { RedHive, BlueHive })
             foreach (var bucket in hive.Contents) bucket.Remove(ball);
         foreach (var flower in Flowers) flower.Balls.Remove(ball);
@@ -179,7 +198,18 @@ public partial class Simulation : Node3D
             if (ball.Stored) continue;
             if (ball.Position.Y < -1 || Mathf.Abs(ball.Position.X) > 20 || Mathf.Abs(ball.Position.Z) > 20)
             { ball.Position = Arena.World(.15f, .15f, ball.Radius + .01f); ball.LinearVelocity = Vector3.Zero; }
-            if (RedHive.TryCatch(ball) || BlueHive.TryCatch(ball)) { ConfirmShot(ball); continue; }
+            if (RedHive.TryCatch(ball))
+            {
+                if (!ball.Preload) _redScoredHive.Add(ball);
+                ConfirmShot(ball);
+                continue;
+            }
+            if (BlueHive.TryCatch(ball))
+            {
+                if (!ball.Preload) _blueScoredHive.Add(ball);
+                ConfirmShot(ball);
+                continue;
+            }
             foreach (var flower in Flowers) if (flower.TryCatch(ball)) { ConfirmShot(ball); break; }
         }
         HumanTokens[0] += RedHive.Tips - _redLastTips; HumanTokens[1] += BlueHive.Tips - _blueLastTips;
@@ -234,15 +264,25 @@ public partial class Simulation : Node3D
     }
     private void UpdateScore()
     {
-        int Score(Hive hive, bool red)
+        for (int s = 0; s < 2; s++)
         {
-            int score = hive.Tips * 20;
-            for (int side = 0; side < 2; side++) foreach (var ball in hive.Contents[side])
-                score += ball.Kind == PieceKind.Pollen ? 2 : ball.Kind == (red ? PieceKind.RedNectar : PieceKind.BlueNectar) ? 5 : 0;
-            foreach (var flower in Flowers) if (flower.Owner == (red ? PieceKind.RedNectar : PieceKind.BlueNectar)) score += 2 * flower.ScoringCount;
-            return score;
+            foreach (var b in RedHive.Contents[s]) if (!b.Preload) _redScoredHive.Add(b);
+            foreach (var b in BlueHive.Contents[s]) if (!b.Preload) _blueScoredHive.Add(b);
         }
-        RedScore = Score(RedHive, true); BlueScore = Score(BlueHive, false);
+        int red = RedHive.Tips * 20;
+        foreach (var b in _redScoredHive)
+            red += b.Kind == PieceKind.Pollen ? 2 : b.Kind == PieceKind.RedNectar ? 5 : 0;
+        foreach (var flower in Flowers)
+            if (flower.Owner == PieceKind.RedNectar) red += 2 * flower.ScoringCount;
+
+        int blue = BlueHive.Tips * 20;
+        foreach (var b in _blueScoredHive)
+            blue += b.Kind == PieceKind.Pollen ? 2 : b.Kind == PieceKind.BlueNectar ? 5 : 0;
+        foreach (var flower in Flowers)
+            if (flower.Owner == PieceKind.BlueNectar) blue += 2 * flower.ScoringCount;
+
+        RedScore = red;
+        BlueScore = blue;
     }
     public override void _UnhandledInput(InputEvent e)
     {
@@ -349,7 +389,7 @@ public partial class Simulation : Node3D
                 string container = Container(b, out int slot);
                 var linear = _pausedVelocities.TryGetValue(b, out var motion) ? motion.Linear : b.LinearVelocity;
                 var angular = _pausedVelocities.TryGetValue(b, out motion) ? motion.Angular : b.AngularVelocity;
-                return new BallData { ShotRobotIndex=b.ShotRobotIndex, ShotConfirmed=b.ShotConfirmed, Kind = b.Kind, X = b.Position.X, Y = b.Position.Y, Z = b.Position.Z,
+                return new BallData { Preload=b.Preload, ShotRobotIndex=b.ShotRobotIndex, ShotConfirmed=b.ShotConfirmed, Kind = b.Kind, X = b.Position.X, Y = b.Position.Y, Z = b.Position.Z,
                     Vx = linear.X, Vy = linear.Y, Vz = linear.Z, Wx = angular.X, Wy = angular.Y, Wz = angular.Z, Container = container, Slot = slot };
             }).ToArray()
         };
@@ -396,12 +436,13 @@ public partial class Simulation : Node3D
         foreach (var b in data.Balls.OrderBy(b => b.Slot))
         {
             var ball = SpawnBall(b.Kind, new(b.X, b.Y, b.Z));
+            ball.Preload = b.Preload;
             ball.ShotRobotIndex=b.ShotRobotIndex; ball.ShotConfirmed=b.ShotConfirmed;
             if (b.Container != "free")
             {
                 string[] parts = b.Container.Split(':'); int index = int.Parse(parts[1]);
-                if (parts[0] == "red") RedHive.Store(ball, index == 0 ? -1 : 1);
-                else if (parts[0] == "blue") BlueHive.Store(ball, index == 0 ? -1 : 1);
+                if (parts[0] == "red") { RedHive.Store(ball, index == 0 ? -1 : 1); if (!ball.Preload) _redScoredHive.Add(ball); }
+                else if (parts[0] == "blue") { BlueHive.Store(ball, index == 0 ? -1 : 1); if (!ball.Preload) _blueScoredHive.Add(ball); }
                 else if (parts[0] == "flower") Flowers[index].Store(ball);
                 else if (parts[0] == "human") { HumanStock[index].Add(ball); ball.Stored = true; ball.Freeze = true; ball.CollisionLayer = 0; ball.CollisionMask = 0; }
             }
@@ -422,7 +463,7 @@ public partial class Simulation : Node3D
     }
     public sealed class RobotData { public int ShotsFired {get;set;} public int ShotsMade {get;set;} public float X { get; set; } public float Z { get; set; } public float Yaw { get; set; } public PieceKind[] Inventory { get; set; }
         public float Vx { get; set; } public float Vz { get; set; } public float Cooldown { get; set; } public float Speed { get; set; } public float Acceleration { get; set; } public float TurnSpeed { get; set; } }
-    public sealed class BallData { public int ShotRobotIndex {get;set;}=-1; public bool ShotConfirmed {get;set;} public PieceKind Kind { get; set; } public float X { get; set; } public float Y { get; set; } public float Z { get; set; }
+    public sealed class BallData { public int ShotRobotIndex {get;set;}=-1; public bool ShotConfirmed {get;set;} public bool Preload {get;set;} public PieceKind Kind { get; set; } public float X { get; set; } public float Y { get; set; } public float Z { get; set; }
         public float Vx { get; set; } public float Vy { get; set; } public float Vz { get; set; } public float Wx { get; set; } public float Wy { get; set; } public float Wz { get; set; }
         public string Container { get; set; } public int Slot { get; set; } }
     public async void AuditTest() => await SimulatorRegressionChecks.Run(this);

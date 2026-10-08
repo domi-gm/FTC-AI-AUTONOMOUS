@@ -24,13 +24,8 @@ public partial class SimulatorHud : CanvasLayer
 
     // Root containers
     private Control _root;
-    private Control _root;
-    private PanelContainer _menu;
-    private VBoxContainer _content;
-    private Label _red, _blue, _clock, _telemetry, _status;
-    private HBoxContainer _score;
     private RobotProfile _draft;
-    public bool MenuVisible => _menu.Visible;
+    public bool MenuVisible => _currentScreen != ScreenType.None;
 
     private Control _hudLayer;
     private ColorRect _modalScrim;
@@ -52,6 +47,26 @@ public partial class SimulatorHud : CanvasLayer
     private HBoxContainer _controlsBar;
     private Button _cameraQuickBtn, _targetQuickBtn;
     private RobotTelemetryPanel _telemetryPanel;
+
+    // Classic Theme Palette (Restored original aesthetic, scaled 1.5x)
+    private static readonly Color Gold = VisualFactory.Gold;           // #f2c230
+    private static readonly Color GoldBorder = new("d4ac37");
+    private static readonly Color Red = VisualFactory.Red;             // #e0453a
+    private static readonly Color Blue = VisualFactory.Blue;           // #3b7de0
+    private static readonly Color Green = new("49ad58");
+    private static readonly Color Orange = new("e67e22");
+    private static readonly Color Purple = new("9b59b6");
+    private static readonly Color TextWhite = Colors.White;
+    private static readonly Color TextMuted = new("a1afc6");
+    private static readonly Color TextDark = new("68768e");
+    private static readonly Color DialogBg = new(0.045f, 0.06f, 0.09f, 0.97f);
+    private static readonly Color CardBg = new(0.075f, 0.10f, 0.15f, 0.92f);
+    private static readonly Color CardInner = new(0.10f, 0.135f, 0.195f, 0.88f);
+    private static readonly Color BtnNormalBg = new("1a2231");
+    private static readonly Color BtnNormalBorder = new("3b485d");
+    private static readonly Color BtnHoverBg = new("34445a");
+    private static readonly Color ScrimColor = new(0.02f, 0.035f, 0.06f, 0.78f);
+
     public override void _Ready()
     {
         _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -103,46 +118,6 @@ public partial class SimulatorHud : CanvasLayer
         theme.SetStylebox("grabber_area_highlight", "HSlider", sliderFill);
 
         _root.Theme = theme;
-        _root.Theme = theme;
-
-        _hudLayer = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _root.AddChild(_hudLayer);
-
-        _score = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, OffsetTop = 16, OffsetLeft = -260, OffsetRight = 260, OffsetBottom = 80, AnchorLeft = .5f, AnchorRight = .5f };
-        _root.AddChild(_score);
-        _red = ScoreLabel(VisualFactory.Red); _clock = ScoreLabel(Colors.White); _blue = ScoreLabel(VisualFactory.Blue);
-        _score.AddChild(_red); _score.AddChild(_clock); _score.AddChild(_blue);
-        _telemetry = new Label { OffsetLeft = 24, OffsetTop = -128, OffsetRight = 560, OffsetBottom = -24, AnchorTop = 1, AnchorBottom = 1, MouseFilter = Control.MouseFilterEnum.Pass };
-        _root.AddChild(_telemetry);
-        var telemetryPanel = new RobotTelemetryPanel { Game = Game, OffsetLeft = 24, OffsetTop = 88, OffsetRight = 328, OffsetBottom = 496 };
-        _root.AddChild(telemetryPanel);
-        _status = new Label { OffsetLeft = 24, OffsetTop = 16, OffsetRight = 380, OffsetBottom = 80, AutowrapMode = TextServer.AutowrapMode.WordSmart, MaxLinesVisible = 2, ClipText = true, MouseFilter = Control.MouseFilterEnum.Pass };
-        _status.AddThemeColorOverride("font_color", new("a1afc6"));
-        _root.AddChild(_status);
-
-        var controls = new HBoxContainer { AnchorLeft = 1, AnchorRight = 1, AnchorTop = 1, AnchorBottom = 1, OffsetLeft = -455, OffsetRight = -24, OffsetTop = -62, OffsetBottom = -20 };
-        _root.AddChild(controls);
-        Button(controls, "CAMERA [C]", () => Game.Camera.Mode = (Game.Camera.Mode + 1) % 3);
-        Button(controls, "RESET [R]", () => Game.Reset());
-        Button(controls, "MENU [ESC]", () => { if (Game.Started) Game.TogglePause(); else ShowMenu(); });
-
-        _menu = new PanelContainer { AnchorLeft = .5f, AnchorRight = .5f, AnchorTop = .5f, AnchorBottom = .5f, OffsetLeft = -295, OffsetRight = 295, OffsetTop = -280, OffsetBottom = 280 };
-        _menu.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = new Color(.045f, .06f, .09f, .96f), BorderColor = new("d4ac37"), BorderWidthTop = 2, ContentMarginLeft = 28, ContentMarginRight = 28, ContentMarginTop = 20, ContentMarginBottom = 20 });
-        _root.AddChild(_menu);
-        var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        _menu.AddChild(scroll);
-        _content = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        _content.AddThemeConstantOverride("separation", 8);
-        scroll.AddChild(_content);
-
-        _modalScrim = new ColorRect { Color = new Color(0.02f, 0.035f, 0.06f, 0.78f), Visible = false, MouseFilter = Control.MouseFilterEnum.Pass };
-        _root.AddChild(_modalScrim);
-        _dialogPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Pass };
-        _root.AddChild(_dialogPanel);
-        _dialogScroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        _dialogPanel.AddChild(_dialogScroll);
-        _dialogBody = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        _dialogScroll.AddChild(_dialogBody);
     }
 
     private static StyleBoxFlat CreateBox(Color bg, Color border, int radius = 8, int borderWidth = 1, int padX = 16, int padY = 12)
@@ -426,8 +401,6 @@ public partial class SimulatorHud : CanvasLayer
 
     public void ShowPause(bool paused)
     {
-    public void ShowPause(bool paused)
-    {
         if (paused)
         {
             NavigateTo(ScreenType.Pause, true);
@@ -438,7 +411,7 @@ public partial class SimulatorHud : CanvasLayer
         }
     }
 
-    private void Back() { _draft = null; if (Game.Started) ShowPause(true); else ShowMenu(); }
+    public void ShowResults()
     {
         NavigateTo(ScreenType.Results, true);
     }
@@ -453,6 +426,7 @@ public partial class SimulatorHud : CanvasLayer
 
     public void GoBack()
     {
+        _draft = null;
         if (_navStack.Count > 1)
         {
             _navStack.Pop();
@@ -475,14 +449,13 @@ public partial class SimulatorHud : CanvasLayer
 
     public void CloseMenu()
     {
+        _draft = null;
         _currentScreen = ScreenType.None;
         _navStack.Clear();
         _modalScrim.Visible = false;
         _dialogPanel.Visible = false;
     }
 
-    private void ClearDialog(string title, string subtitle = "")
-    {
     private void ClearDialog(string title, string subtitle = "")
     {
         foreach (var child in _dialogBody.GetChildren())
@@ -496,22 +469,6 @@ public partial class SimulatorHud : CanvasLayer
         _modalScrim.Visible = true;
         _dialogPanel.Visible = true;
         _dialogScroll.ScrollVertical = 0;
-
-        _draft ??= Game.Profile.Copy();
-        Clear("ROBOT CREATOR", "Local profile • Apply restarts the scene");
-        Slider("Width (cm)", 25, 45.72, _draft.WidthCm, v => _draft.WidthCm = (float)v);
-        Slider("Length (cm)", 25, 45.72, _draft.LengthCm, v => _draft.LengthCm = (float)v);
-        Slider("Speed (m/s)", .3, 3, _draft.Speed, v => _draft.Speed = (float)v);
-        Slider("Acceleration (m/s²)", .5, 8, _draft.Acceleration, v => _draft.Acceleration = (float)v);
-        Slider("Turn speed (rad/s)", .5, 6, _draft.TurnSpeed, v => _draft.TurnSpeed = (float)v);
-        Button(_content, $"TURRETS: {_draft.Turrets}  /  INTAKES: {_draft.Intakes}", () => { _draft.Turrets = _draft.Turrets % 3 + 1; RobotSetup(); });
-        Button(_content, "TOGGLE SECOND INTAKE", () => { _draft.Intakes = 3 - _draft.Intakes; RobotSetup(); });
-        Button(_content, "SAVE + APPLY", () => {
-            try { _draft.Save(); Game.Profile = _draft; Game.Reset(); }
-            catch (Exception ex) { Game.Status = "Cannot apply robot: " + ex.Message; }
-        });
-        Button(_content, "BACK", Back);
-    }
     }
 
     private void RenderCurrentScreen()
@@ -580,20 +537,32 @@ public partial class SimulatorHud : CanvasLayer
         // Primary Game Modes Card
         var modesCard = CreateCard(_dialogBody, "MATCH & TRAINING MODES");
 
+        CreateButton(modesCard, "AI TRAINING GROUND [TRAIN]", () =>
+        {
+            Game.TrainingGround = true;
+            Game.AutonomousDrill = false;
+            Game.Practice = true;
+            Game.Reset();
+            CloseMenu();
+        }, true);
+
         CreateButton(modesCard, "30S AUTONOMOUS DRILL [AUTO]", () =>
         {
+            Game.TrainingGround = false;
             Game.AutonomousDrill = true;
             StartMatch(false);
-        }, true);
+        });
 
         CreateButton(modesCard, "PLAY FULL MATCH (158S)", () =>
         {
+            Game.TrainingGround = false;
             Game.AutonomousDrill = false;
             StartMatch(false);
         });
 
         CreateButton(modesCard, "FREE PRACTICE ARENA", () =>
         {
+            Game.TrainingGround = false;
             Game.AutonomousDrill = false;
             StartMatch(true);
         });
@@ -716,6 +685,14 @@ public partial class SimulatorHud : CanvasLayer
         _dialogBody.AddChild(subRow);
 
         CreateButton(subRow, "ROBOT SETUP", () => NavigateTo(ScreenType.RobotCreator)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        CreateButton(subRow, "AI TRAINING GROUND", () =>
+        {
+            Game.TrainingGround = true;
+            Game.AutonomousDrill = false;
+            Game.Practice = true;
+            Game.Reset();
+            CloseMenu();
+        }).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         CreateButton(subRow, "SETTINGS", () => NavigateTo(ScreenType.Settings)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         CreateButton(subRow, "HOW TO PLAY", () => NavigateTo(ScreenType.Help)).SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
@@ -738,7 +715,8 @@ public partial class SimulatorHud : CanvasLayer
     {
         ClearDialog("ROBOT CREATOR", "Local profile • Apply restarts the scene");
 
-        var profile = Game.Profile;
+        _draft ??= Game.Profile.Copy();
+        var profile = _draft;
 
         // FTC Sizing Compliance Card
         var sizingCard = CreateCard(_dialogBody, "FTC 18\" SIZING COMPLIANCE");
@@ -868,13 +846,25 @@ public partial class SimulatorHud : CanvasLayer
 
         var saveBtn = CreateButton(actionsRow, "SAVE + APPLY", () =>
         {
-            profile.Save();
-            Game.Reset(Game.Started);
-            CloseMenu();
+            try
+            {
+                _draft.Save();
+                Game.Profile = _draft;
+                Game.Reset(Game.Started);
+                CloseMenu();
+            }
+            catch (Exception ex)
+            {
+                Game.Status = "Cannot apply robot: " + ex.Message;
+            }
         }, true);
         saveBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
-        var backBtn = CreateButton(actionsRow, "BACK [ESC]", GoBack);
+        var backBtn = CreateButton(actionsRow, "BACK", () =>
+        {
+            _draft = null;
+            GoBack();
+        });
         backBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
     }
 
@@ -1302,8 +1292,6 @@ public partial class SimulatorHud : CanvasLayer
     // =========================================================================
     public override void _Process(double delta)
     {
-    public override void _Process(double delta)
-    {
         if (Game == null || Game.Player == null) return;
 
         bool isMenuOpen = _currentScreen != ScreenType.None;
@@ -1312,20 +1300,8 @@ public partial class SimulatorHud : CanvasLayer
         _controlsBar.Visible = !isMenuOpen;
         _statusToast.Visible = !isMenuOpen && !string.IsNullOrEmpty(Game.Status);
 
-        if (_red != null && _blue != null)
-        {
-            _red.Text = $"RED  {Game.RedScore}";
-            _blue.Text = $"{Game.BlueScore}  BLUE";
-            string phase = Game.Practice ? "PRACTICE" : Game.Elapsed < 30 ? "AUTO" : Game.Elapsed < 38 ? "TRANSITION" : Game.Elapsed < 158 ? "TELEOP" : "FINAL";
-            float time = Game.Practice ? Game.Elapsed : Game.Elapsed < 30 ? 30 - Game.Elapsed : Game.Elapsed < 38 ? 38 - Game.Elapsed : Mathf.Max(0, 158 - Game.Elapsed);
-            _clock.Text = $"{(int)time / 60}:{(int)time % 60:00}  {phase}";
-            _clock.AddThemeFontSizeOverride("font_size", 22);
-            var p = Game.Player.Position;
-            _telemetry.Text = $"R1   {p.X * 100:0.0}, {-p.Z * 100:0.0} cm\nINVENTORY {Game.Player.Inventory.Count}/4    INTAKE {(Game.Player.Intake ? "ON" : "OFF")}\nTARGET {(Game.AimFlower ? "FLOWER" : "HIVE")}    SHOT {Game.Player.ShotStatus}\nWASD Camera-relative   Q/E Turn   SHIFT Collect   SPACE Shoot";
-            _telemetry.TooltipText = $"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}";
-            _status.Text = Game.Status;
-            _status.TooltipText = Game.Status;
-        }
+        _telemetryCard.TooltipText = $"Current readiness refreshes at 20 Hz. Last attempt: {Game.Player.LastShotAttempt}\n{Game.Player.LastShotDiagnosis.Reason}: {Game.Player.LastShotDiagnosis.Obstacle}\nContact estimate (Godot metres): {Game.Player.LastShotDiagnosis.Point}";
+        _statusToast.TooltipText = Game.Status;
 
         _redScoreLabel.Text = Game.RedScore.ToString();
         _blueScoreLabel.Text = Game.BlueScore.ToString();
@@ -1334,7 +1310,13 @@ public partial class SimulatorHud : CanvasLayer
         float timeLeft;
         Color phaseColor;
 
-        if (Game.Practice)
+        if (Game.TrainingGround)
+        {
+            phaseName = "AI TRAINING GROUND";
+            timeLeft = Game.Elapsed;
+            phaseColor = Gold;
+        }
+        else if (Game.Practice)
         {
             phaseName = "PRACTICE ARENA";
             timeLeft = Game.Elapsed;
@@ -1416,6 +1398,5 @@ public partial class SimulatorHud : CanvasLayer
                 GetViewport().SetInputAsHandled();
             }
         }
-    }
     }
 }
