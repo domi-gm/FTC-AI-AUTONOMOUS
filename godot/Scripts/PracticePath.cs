@@ -12,14 +12,17 @@ public partial class PracticePath : Node3D
     public int Current;
     private Vector3 _previousPosition;
     private float _blockedTime;
+    private float _startRampTime;
+
     public override void _PhysicsProcess(double delta)
     {
-        if (!Following || !Game.Running) { _blockedTime=0; _previousPosition=Game.Player.Position; return; }
-        if (Current<Points.Count && Points[Current].DistanceTo(Game.Player.Position)>.05f
-            && _previousPosition.DistanceTo(Game.Player.Position)<.06f*(float)delta) _blockedTime+=(float)delta;
-        else _blockedTime=0;
-        _previousPosition=Game.Player.Position;
-        if (_blockedTime>2) { Following=false; Game.Player.Command=Vector3.Zero; Game.Status="Path stopped: blocked for 2 seconds; move the waypoint"; }
+        if (!Following || !Game.Running) { _blockedTime = 0; _startRampTime = 0; _previousPosition = Game.Player.Position; return; }
+        _startRampTime += (float)delta;
+        if (Current < Points.Count && Points[Current].DistanceTo(Game.Player.Position) > .05f
+            && _previousPosition.DistanceTo(Game.Player.Position) < .06f * (float)delta) _blockedTime += (float)delta;
+        else _blockedTime = 0;
+        _previousPosition = Game.Player.Position;
+        if (_blockedTime > 2) { Following = false; Game.Player.Command = Vector3.Zero; Game.Status = "Path stopped: blocked for 2 seconds; move the waypoint"; }
     }
     public bool IsValidPoint(Vector3 point)
     {
@@ -35,15 +38,15 @@ public partial class PracticePath : Node3D
         if (data==null || data.Length>1000 || !data.All(p=>p?.Length==2 && IsValidPoint(Field.ToGodot(p[0],p[1]))))
         { Game.Status="Invalid path: a waypoint overlaps an obstacle or field wall"; return false; }
         Points.Clear(); foreach (var point in data) Points.Add(Field.ToGodot(point[0],point[1]));
-        Following=false; Current=0; _blockedTime=0; Rebuild(); return true;
+        Following=false; Current=0; _blockedTime=0; _startRampTime=0; Rebuild(); return true;
     }
     public override void _UnhandledInput(InputEvent e)
     {
         if (!Game.Practice || !Game.Running) return;
         if (e is InputEventKey k && k.Pressed && !k.Echo)
         {
-            if (k.PhysicalKeycode == Key.F2) { Editing = !Editing; Following = false; Game.Status = "Path editor: left click adds, Backspace removes, P follows"; }
-            if (k.PhysicalKeycode == Key.P && Points.Count > 0) { Following = !Following; Current = 0; }
+            if (k.PhysicalKeycode == Key.F2) { Editing = !Editing; Following = false; _startRampTime = 0; Game.Status = "Path editor: left click adds, Backspace removes, P follows"; }
+            if (k.PhysicalKeycode == Key.P && Points.Count > 0) { Following = !Following; Current = 0; _startRampTime = 0; }
             if (k.PhysicalKeycode == Key.Backspace && Editing && Points.Count > 0) { Points.RemoveAt(Points.Count - 1); Rebuild(); }
         }
         if (Editing && e is InputEventMouseButton b && b.Pressed && b.ButtonIndex == MouseButton.Left)
@@ -59,13 +62,34 @@ public partial class PracticePath : Node3D
     public Vector3 Command()
     {
         if (!Following || Current >= Points.Count) { Following = false; return Vector3.Zero; }
-        while (Current<Points.Count)
+        while (Current < Points.Count)
         {
-            var difference=Points[Current]-Game.Player.Position; difference.Y=0;
-            if (difference.Length()>=.035f) return difference.Normalized()*Mathf.Min(1,difference.Length()*4);
+            var difference = Points[Current] - Game.Player.Position; difference.Y = 0;
+            if (difference.Length() >= .035f)
+            {
+                // Smooth acceleration ramp when starting to follow
+                float ramp = Mathf.Clamp(_startRampTime / 0.45f, 0.25f, 1.0f);
+                ramp = ramp * ramp * (3f - 2f * ramp); // Smoothstep curve
+                return difference.Normalized() * (Mathf.Min(1f, difference.Length() * 3.5f) * ramp);
+            }
             Current++;
         }
-        Following=false; return Vector3.Zero;
+        Following = false; return Vector3.Zero;
+    }
+
+    public float TurnCommand()
+    {
+        if (!Following || Current >= Points.Count || Game?.Player == null) return 0f;
+        var diff = Points[Current] - Game.Player.Position; diff.Y = 0;
+        if (diff.LengthSquared() < 0.002f) return 0f;
+        Vector3 desired = diff.Normalized();
+        Vector3 forward = Game.Player.Front; forward.Y = 0;
+        if (forward.LengthSquared() < 0.002f) return 0f;
+        forward = forward.Normalized();
+        float cross = forward.X * desired.Z - forward.Z * desired.X;
+        float dot = Mathf.Clamp(forward.Dot(desired), -1f, 1f);
+        float angle = Mathf.Atan2(cross, dot);
+        return Mathf.Clamp(angle * 2.2f, -1f, 1f);
     }
     public void ClearPath()
     {

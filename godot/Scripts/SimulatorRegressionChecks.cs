@@ -90,12 +90,56 @@ public static class SimulatorRegressionChecks
             await Frames(3);
             game.TogglePause();
             Find<Button>(game.Hud,b=>b.Text=="ROBOT SETUP").EmitSignal(Button.SignalName.Pressed);
+            Check(game.Hud.CurrentScreen == SimulatorHud.ScreenType.RobotRoster, "ROBOT SETUP navigates to Robot Roster");
+            game.Hud.NavigateTo(SimulatorHud.ScreenType.RobotCreator);
             var slider=Find<HSlider>(game.Hud,s=>s.MaxValue==45.72);
             float oldWidth=game.Profile.WidthCm;
             slider.Value=30;
             Check(Mathf.Abs(game.Profile.WidthCm-oldWidth)<.0001f,"Creator draft does not mutate the active profile");
             Find<Button>(game.Hud,b=>b.Text=="BACK").EmitSignal(Button.SignalName.Pressed);
             Check(Mathf.Abs(game.Profile.WidthCm-oldWidth)<.0001f,"Back discards unapplied robot edits");
+            game.Hud.NavigateTo(SimulatorHud.ScreenType.RobotWorkshop);
+            Check(game.Hud.CurrentScreen == SimulatorHud.ScreenType.RobotWorkshop, "Navigate to Robot Workshop");
+            game.Hud.NavigateTo(SimulatorHud.ScreenType.RobotImport);
+            Check(game.Hud.CurrentScreen == SimulatorHud.ScreenType.RobotImport, "Navigate to Robot Import");
+            var backDiscard = Find<Button>(game.Hud, b => b.Text == "BACK / DISCARD");
+            Check(backDiscard != null, "CAD importer contains BACK / DISCARD button");
+            backDiscard.EmitSignal(Button.SignalName.Pressed);
+            Check(game.Hud.CurrentScreen == SimulatorHud.ScreenType.RobotWorkshop, "CAD importer back button returns to Robot Workshop");
+            var rwBack = Find<Button>(game.Hud, b => b.Text == "BACK [ESC]");
+            Check(rwBack != null, "Robot Workshop contains BACK [ESC] button");
+            rwBack.EmitSignal(Button.SignalName.Pressed);
+            Check(game.Hud.CurrentScreen == SimulatorHud.ScreenType.Main, "Robot Workshop back button returns to Main menu");
+            game.Player.Position = Vector3.Zero;
+            game.Player.Rotation = new Vector3(0, Mathf.Pi / 2, 0);
+            Vector3 orientedForward = (game.Player.GlobalBasis * new Vector3(0, 0, -1)).Normalized();
+            Check(orientedForward.DistanceTo(Vector3.Left) < .001f, "Robot drives forward in its current turned orientation");
+            Key oldForward = game.KeyForward;
+            game.KeyForward = Key.Up;
+            game.SaveControls();
+            game.KeyForward = Key.W;
+            game.LoadControls();
+            Check(game.KeyForward == Key.Up, "Saved control bindings persist across reload");
+            game.KeyForward = oldForward;
+            game.SaveControls();
+
+            game.Hud.CloseMenu();
+            bool oldDriveMode = game.RobotCentricDrive;
+            var driveKeyEvent = new InputEventKey { Pressed = true, Echo = false, PhysicalKeycode = game.KeyDriveMode };
+            game._UnhandledInput(driveKeyEvent);
+            Check(game.RobotCentricDrive != oldDriveMode, "KeyDriveMode (N) toggles RobotCentricDrive");
+            game._UnhandledInput(driveKeyEvent);
+            Check(game.RobotCentricDrive == oldDriveMode, "Second KeyDriveMode press toggles back");
+
+            game.SetPlayerStartingPosition(0);
+            Check(game.Player.Position.DistanceTo(Simulation.DefaultStartingPositions[0].Position) < .001f, "SetPlayerStartingPosition(0) sets Red Near position");
+            game.SetPlayerStartingPosition(2);
+            Check(game.Player.Position.DistanceTo(Simulation.DefaultStartingPositions[2].Position) < .001f, "SetPlayerStartingPosition(2) sets Blue Near position");
+
+            game.Hud.NavigateTo(SimulatorHud.ScreenType.PracticePositions);
+            Check(game.Hud.CurrentScreen == SimulatorHud.ScreenType.PracticePositions, "Navigate to PracticePositions screen with 3D preview");
+            game.Hud.CloseMenu();
+
             var detached=game.Capture();
             float snapshotWidth=detached.Profile.WidthCm;
             game.Profile.WidthCm=31;
@@ -181,6 +225,171 @@ public static class SimulatorRegressionChecks
             var finished=game.Capture(); game.Restore(finished); await Frames(3);
             Check(game.Finished && !game.Running && game.Hud.MenuVisible && game.Balls.Where(b=>!b.Stored).All(b=>b.Freeze),
                 "Loading a finished match preserves the final result and freeze");
+
+            // AI Training Ground: floor balls, inventory loadout, standby start, and 30s auto-looping
+            game.TrainingGround = true;
+            game.TrainingLoopActive = false;
+            game.TrainingInventoryConfigured = true;
+            game.TrainingInventoryPollen = 2;
+            game.TrainingInventoryNectar = 1;
+            game.TrainingFloorBallsConfigured = true;
+            game.TrainingBallsPreset = "sparse";
+            game.Reset(); await Frames(3);
+            Check(game.Player.Inventory.Count == 3 && game.Player.Inventory.Count(k => k == PieceKind.Pollen) == 2,
+                "AI Training Ground applies configured robot inventory (2 pollen, 1 nectar)");
+            Check(game.Balls.Count(game.IsFloorBall) == 12,
+                "AI Training Ground persists sparse floor balls preset (12 balls)");
+            Check(!game.TrainingLoopActive && game.Countdown == 0,
+                "AI Training Ground does not auto-start autonomous sequence on entry (standby)");
+
+            game.TrainingBallsPreset = "clear";
+            game.Reset(); await Frames(3);
+            Check(game.Balls.Count(game.IsFloorBall) == 0,
+                "AI Training Ground persists clear floor balls preset (0 balls)");
+
+            game.TrainingBallsPreset = "full";
+            game.Reset(); await Frames(3);
+            Check(game.Balls.Count(game.IsFloorBall) == 36,
+                "AI Training Ground persists full floor balls preset (36 balls)");
+
+            game.TrainingBallsPreset = "ftc";
+            game.Reset(); await Frames(3);
+            Check(game.Balls.Count(game.IsFloorBall) == 8,
+                "AI Training Ground persists official FTC floor balls preset (8 balls)");
+
+            game.SetFieldBallsPreset("official"); await Frames(3);
+            Check(game.Balls.Count(game.IsFloorBall) == 8,
+                "SetFieldBallsPreset('official') configures 8 perimeter balls");
+
+            game.StartTrainingDrill();
+            Check(game.TrainingLoopActive, "Start button activates 30s training drill");
+            Check(!game.Player.Bot, "Player robot does not run bot autopilot in training ground");
+
+            game.SetTimeMultiplier(3.0f);
+            Check(Mathf.IsEqualApprox(game.TrainingTimeMultiplier, 3.0f) && Mathf.IsEqualApprox((float)Engine.TimeScale, 3.0f),
+                "Time multiplier applies to TrainingTimeMultiplier and Engine.TimeScale");
+            game.SetTimeMultiplier(1.0f);
+            Engine.TimeScale = 1.0f;
+
+            game.Countdown = 0;
+            game.Elapsed = 30.01f;
+            await Frames(3);
+            Check(game.TrainingLoopActive && game.Elapsed < 1.0f && !game.Finished,
+                "AI Training Ground loops back around at 30 seconds without showing results screen");
+
+            game.StopTrainingDrill();
+            Check(!game.TrainingLoopActive, "Stop button returns training ground to standby");
+
+            // Autonomous Paths Roster, Presets, and Waypoint Actions
+            var defaultPaths = AutonomousPathRoster.GetPaths();
+            Check(defaultPaths.Count >= 4, "Autonomous path roster initializes with at least 4 default FTC routines");
+            var rnPath = AutonomousPathRoster.GetPathByName("Red Near 3-Piece Hive Cycle");
+            Check(rnPath != null && rnPath.StartingPosition == "Red Near", "Red Near preset routine exists with correct start position");
+            Check(rnPath.Waypoints.Any(w => w.Action == WaypointAction.Shoot), "Autonomous path includes Shoot waypoint action");
+            Check(rnPath.Waypoints.Any(w => w.Action == WaypointAction.IntakeOn), "Autonomous path includes IntakeOn waypoint action");
+
+            // Autonomous Path Definition Copy & Deep Clone
+            var clonedPath = rnPath.Copy();
+            Check(clonedPath.Waypoints.Count == rnPath.Waypoints.Count && clonedPath.Id == rnPath.Id, "Autonomous path Copy creates valid clone");
+            clonedPath.Waypoints[0].X = 2.5f;
+            Check(rnPath.Waypoints[0].X != 2.5f, "Autonomous path Copy is a deep clone of waypoints");
+
+            // Autonomous Path Slot Assignment & Persistence
+            game.AssignedAutonomousPaths[0] = "Red Near 3-Piece Hive Cycle";
+            game.AssignedAutonomousPaths[1] = "Red Far Wing Intake & Hive";
+            game.AssignedAutonomousPaths[2] = "Blue Near Audience Hive Cycle";
+            game.AssignedAutonomousPaths[3] = "Blue Far Backstage Cross & Hive";
+            game.SaveSettings();
+            game.AssignedAutonomousPaths[0] = "";
+            game.LoadSettings();
+            Check(game.AssignedAutonomousPaths[0] == "Red Near 3-Piece Hive Cycle",
+                "Assigned autonomous paths are persisted to settings.json across sessions");
+
+            // Autonomous Path Runner Execution & Multi-Robot Coordination
+            game.TrainingRobotCount = 4;
+            game.TrainingSolo = false;
+            game.Reset(); await Frames(3);
+            Check(game.Robots.Count == 4, "AI Training Ground spawns 4 robots for multi-robot drills");
+
+            game.StartTrainingDrill();
+            Check(game.PathRunners[0].IsRunning && game.PathRunners[1].IsRunning,
+                "StartTrainingDrill activates AutonomousPathRunners for configured robots");
+            Check(game.IsPathRunningForRobot(game.Robots[1]),
+                "IsPathRunningForRobot correctly identifies autonomous bots running paths");
+
+            // Runner Waypoint Action Handling (Intake & Driving)
+            var testPath = new AutonomousPathDefinition
+            {
+                Name = "Test Routine",
+                StartingPosition = "Red Near",
+                Waypoints = new System.Collections.Generic.List<AutonomousWaypoint>
+                {
+                    new() { X = game.Robots[1].Position.X, Z = game.Robots[1].Position.Z, Action = WaypointAction.IntakeOn },
+                    new() { X = game.Robots[1].Position.X + 0.5f, Z = game.Robots[1].Position.Z, Action = WaypointAction.Wait, ActionParam = 0.2f }
+                }
+            };
+            var testRunner = new AutonomousPathRunner(game.Robots[1]);
+            testRunner.Start(testPath);
+            testRunner.Update(0.02);
+            Check(game.Robots[1].Intake, "AutonomousPathRunner executes IntakeOn waypoint action on target robot");
+
+            game.StopTrainingDrill();
+            Check(!game.PathRunners[0].IsRunning && !game.PathRunners[1].IsRunning,
+                "StopTrainingDrill terminates all active autonomous path runners");
+
+            // PedroPathVisualizer2D Simulation & Coordinate Mapping Checks
+            var visualizer = new PedroPathVisualizer2D
+            {
+                Path = testPath,
+                Size = new Vector2(400, 400)
+            };
+            game.AddChild(visualizer);
+            await Frames(2);
+
+            Vector2 canvasP = visualizer.WorldToCanvas(1.5f, -1.5f);
+            Vector2 roundTrip = visualizer.CanvasToWorld(canvasP);
+            Check(Mathf.Abs(roundTrip.X - 1.5f) < 0.05f && Mathf.Abs(roundTrip.Y - (-1.5f)) < 0.05f,
+                "PedroPathVisualizer2D converts between world and 2D canvas coordinates accurately");
+
+            visualizer.StartSimulation();
+            Check(visualizer.IsSimulating && !visualizer.IsPaused,
+                "PedroPathVisualizer2D starts 2D simulation along waypoints");
+
+            visualizer._Process(0.1);
+            Check(visualizer.SimElapsed > 0.05f,
+                "PedroPathVisualizer2D updates 2D robot position and timers during simulation");
+
+            visualizer.TogglePauseSimulation();
+            Check(visualizer.IsPaused, "PedroPathVisualizer2D toggles pause during simulation");
+
+            visualizer.ResetSimulation();
+            Check(!visualizer.IsSimulating && visualizer.SimElapsed == 0f,
+                "PedroPathVisualizer2D resets simulation back to initial waypoint");
+
+            game.RemoveChild(visualizer);
+            visualizer.QueueFree();
+
+            // Autonomous Path Editor UI dialog sizing checks
+            game.Hud.NavigateTo(SimulatorHud.ScreenType.AutonomousPathEditor);
+            await Frames(2);
+            var editorVisualizer = Find<PedroPathVisualizer2D>(game.Hud, v => v != null);
+            Check(editorVisualizer != null, "Autonomous Path Editor instantiates PedroPathVisualizer2D");
+            Check(editorVisualizer.CustomMinimumSize.X <= 320 && editorVisualizer.CustomMinimumSize.Y <= 320,
+                "PedroPathVisualizer2D custom minimum size is compact and fits within dialog bounds");
+            var simRunBtn = Find<Button>(game.Hud, b => b.Text.Contains("SIMULATE PATH"));
+            Check(simRunBtn != null, "Autonomous Path Editor contains TEST RUN SIMULATE PATH button");
+
+            var testOnFieldBtn = Find<Button>(game.Hud, b => b.Text == "TEST ON FIELD");
+            Check(testOnFieldBtn != null, "Autonomous Path Editor contains TEST ON FIELD button");
+            testOnFieldBtn.EmitSignal(Button.SignalName.Pressed);
+            await Frames(2);
+
+            Check(game.Running && !game.Paused, "TEST ON FIELD starts simulation without pause");
+            Check(game.Countdown == 0f, "TEST ON FIELD starts immediately with 0s countdown");
+            Check(game.TrainingLoopActive, "TEST ON FIELD activates 30s training loop drill");
+            Check(game.PathRunners[0].IsRunning, "TEST ON FIELD starts autonomous path runner for robot");
+            game.StopTrainingDrill();
+
             GD.Print("ALL AUDIT REGRESSIONS PASSED"); game.GetTree().Quit();
         }
         catch (Exception ex) { GD.PushError("AUDIT FAILURE: "+ex); game.GetTree().Quit(1); }

@@ -126,7 +126,21 @@ public partial class RobotAgent : CharacterBody3D
         _decisionTime+=delta;
         if (_decisionTime+1e-9>=Simulation.ControlStep)
         {
-            if (Bot) Think((float)_decisionTime);
+            if (Bot)
+            {
+                if (Game.IsPathRunningForRobot(this))
+                {
+                    // Controlled by AutonomousPathRunner in Simulation._PhysicsProcess
+                }
+                else if (Game.OpponentAi && (!Game.TrainingGround || Game.TrainingLoopActive))
+                {
+                    Think((float)_decisionTime);
+                }
+                else
+                {
+                    Command = Vector3.Zero; TurnCommand = 0f;
+                }
+            }
             _decisionTime=0;
         }
         Vector3 desired = Command.LimitLength() * Speed;
@@ -182,11 +196,16 @@ public partial class RobotAgent : CharacterBody3D
         }
         AimTurrets();
     }
-    private void AimTurrets()
+    public void AimTurrets()
     {
         var target=Game.Target(this);
         foreach (var turret in _turrets)
-            if ((target-turret.GlobalPosition).LengthSquared()>.01f) turret.LookAt(new(target.X,turret.GlobalPosition.Y,target.Z));
+        {
+            if (turret == null || !IsInstanceValid(turret)) continue;
+            var horizontal = new Vector2(target.X - turret.GlobalPosition.X, target.Z - turret.GlobalPosition.Z);
+            if (horizontal.LengthSquared() > 0.04f)
+                turret.LookAt(new Vector3(target.X, turret.GlobalPosition.Y, target.Z), Vector3.Up);
+        }
     }
     private void Collect()
     {

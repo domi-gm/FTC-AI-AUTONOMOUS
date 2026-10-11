@@ -14,7 +14,10 @@ public partial class SimulatorHud
             OffsetLeft = -345, OffsetRight = -24, OffsetTop = -255, OffsetBottom = -80, Visible = false };
         _jointControls.AddThemeStyleboxOverride("panel", CreateBox(new Color(.045f, .06f, .09f, .9f), Gold, 8, 1, 10, 10));
         _root.AddChild(_jointControls);
-        var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled }; _jointControls.AddChild(scroll);
+        var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, VerticalScrollMode = ScrollContainer.ScrollMode.ShowNever };
+        scroll.GetVScrollBar().Modulate = Colors.Transparent;
+        scroll.GetVScrollBar().CustomMinimumSize = Vector2.Zero;
+        _jointControls.AddChild(scroll);
         _jointControlsList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; scroll.AddChild(_jointControlsList);
     }
     private void UpdateJointControls()

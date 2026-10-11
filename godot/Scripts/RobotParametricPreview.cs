@@ -92,7 +92,7 @@ public partial class RobotParametricPreview : SubViewportContainer
         }
     }
 
-    private static Node3D BuildParametricMesh(RobotProfile profile)
+    public static Node3D BuildParametricMesh(RobotProfile profile)
     {
         var root = new Node3D();
         float w = (profile?.WidthCm ?? 45.72f) / 100f;

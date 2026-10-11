@@ -16,14 +16,17 @@ public partial class Simulation : Node3D
     public PracticePath PathEditor;
     public AimPreview Aim;
     public bool Started, Paused, Practice = true, TwoPlayers, AutonomousDrill, TrainingGround;
+    public float Countdown = 0f;
     public bool OpponentAi = true;
     public bool ShowTrajectory = true;
+    public bool RobotCentricDrive = true;
     public Key KeyForward = Key.W;
     public Key KeyBackward = Key.S;
     public Key KeyLeft = Key.A;
     public Key KeyRight = Key.D;
     public Key KeyTurnLeft = Key.Q;
     public Key KeyTurnRight = Key.E;
+    public Key KeyDriveMode = Key.N;
     public Key KeyIntake = Key.Shift;
     public Key KeyLaunch = Key.Space;
     public Key KeyTarget = Key.T;
@@ -31,9 +34,519 @@ public partial class Simulation : Node3D
     public Key KeyReset = Key.R;
     public Key KeyHuman = Key.H;
     public Key KeyExtract = Key.K;
+    private bool _lastIntakePressed;
+    private bool _lastIntakePressedSecond;
+    private bool _lastJoyIntakePressed;
+    private bool _lastJoyIntakePressedSecond;
+
+    public bool TrainingSolo = true;
+    public bool TrainingAutonomousMode = false;
+    public int TrainingRobotCount = 1;
+    public bool TrainingThreeWithAlly = true; // When 3 bots: true = Ally on your team vs 1 opponent; false = 2 on opposing team
+    public int TrainingPlacement = 0; // 0: FTC Starts, 1: Hive Defense, 2: Scattered, 3: Wing/Corners
+    public int SelectedStartingPositionIndex = 0;
+
+    public bool TrainingLoopActive;
+    public int TrainingInventoryPollen;
+    public int TrainingInventoryNectar;
+    public bool TrainingInventoryConfigured;
+    public string TrainingBallsPreset = "full";
+    public bool TrainingFloorBallsConfigured;
+
+    public struct TrainingBallData
+    {
+        public PieceKind Kind;
+        public Vector3 Position;
+    }
+    public readonly List<TrainingBallData> CustomTrainingFloorBalls = new();
+    public float TrainingTimeMultiplier = 1.0f;
+
+    public readonly AutonomousPathRunner[] PathRunners = { new(), new(), new(), new() };
+    public readonly string[] AssignedAutonomousPaths = {
+        "Red Near 3-Piece Hive Cycle",
+        "Red Far Wing Intake & Hive",
+        "Blue Near Audience Hive Cycle",
+        "Blue Far Backstage Cross & Hive"
+    };
+
+    public bool IsPathRunningForRobot(RobotAgent robot)
+    {
+        if (robot == null) return false;
+        int idx = Robots.IndexOf(robot);
+        return idx >= 0 && idx < PathRunners.Length && PathRunners[idx] != null && PathRunners[idx].IsRunning;
+    }
+
+    public void StartAutonomousPathRunners()
+    {
+        for (int i = 0; i < Robots.Count && i < PathRunners.Length; i++)
+        {
+            var robot = Robots[i];
+            PathRunners[i].Robot = robot;
+            string pathName = i < AssignedAutonomousPaths.Length ? AssignedAutonomousPaths[i] : null;
+            if (!string.IsNullOrEmpty(pathName) && !pathName.Equals("[MANUAL DRIVING]", StringComparison.OrdinalIgnoreCase))
+            {
+                var pathDef = AutonomousPathRoster.GetPathByName(pathName);
+                if (pathDef != null && pathDef.Waypoints.Count > 0)
+                {
+                    PathRunners[i].Start(pathDef);
+                    continue;
+                }
+            }
+            PathRunners[i].Stop();
+        }
+    }
+
+    public void StopAutonomousPathRunners()
+    {
+        for (int i = 0; i < PathRunners.Length; i++)
+        {
+            PathRunners[i]?.Stop();
+            if (PathRunners[i] != null) PathRunners[i].Robot = null;
+        }
+    }
+
+    public void SetTimeMultiplier(float multiplier)
+    {
+        TrainingTimeMultiplier = Mathf.Clamp(multiplier, 0.5f, 10.0f);
+        Engine.TimeScale = TrainingTimeMultiplier;
+    }
+
+    public void StartTrainingDrill()
+    {
+        TrainingLoopActive = true;
+        Countdown = 3.0f;
+        _elapsed = 0;
+        Engine.TimeScale = TrainingTimeMultiplier;
+        StartAutonomousPathRunners();
+    }
+
+    public void StopTrainingDrill()
+    {
+        TrainingLoopActive = false;
+        Countdown = 0f;
+        _elapsed = 0;
+        StopAutonomousPathRunners();
+        Reset(true);
+        Engine.TimeScale = TrainingTimeMultiplier;
+    }
+
+    public void ResetTrainingCycle()
+    {
+        TrainingLoopActive = true;
+        Reset(true);
+        Countdown = 0f;
+        _elapsed = 0;
+        Engine.TimeScale = TrainingTimeMultiplier;
+        StartAutonomousPathRunners();
+        if (Hud != null)
+        {
+            Hud.TriggerStartFlash("START!", "30S LOOP RESTARTED");
+        }
+    }
+
+    public bool IsFloorBall(GamePiece b)
+    {
+        if (b == null || !GodotObject.IsInstanceValid(b)) return false;
+        if (b.Stored || b.ShotRobotIndex >= 0) return false;
+        if (Flowers.Any(f => f.Balls.Contains(b))) return false;
+        if (RedHive != null && (RedHive.Contents[0].Contains(b) || RedHive.Contents[1].Contains(b))) return false;
+        if (BlueHive != null && (BlueHive.Contents[0].Contains(b) || BlueHive.Contents[1].Contains(b))) return false;
+        return true;
+    }
+
+    public void CaptureTrainingFloorBalls()
+    {
+        CustomTrainingFloorBalls.Clear();
+        foreach (var b in Balls)
+        {
+            if (IsFloorBall(b))
+            {
+                CustomTrainingFloorBalls.Add(new TrainingBallData { Kind = b.Kind, Position = b.Position });
+            }
+        }
+    }
+
+    public void SpawnTrainingFloorBalls()
+    {
+        if (CustomTrainingFloorBalls.Count > 0 && TrainingBallsPreset == "custom")
+        {
+            foreach (var b in CustomTrainingFloorBalls)
+            {
+                SpawnBall(b.Kind, b.Position);
+            }
+        }
+        else if (TrainingBallsPreset == "clear")
+        {
+            // 0 loose balls
+        }
+        else if (TrainingBallsPreset == "ftc" || TrainingBallsPreset == "official")
+        {
+            for (int alliance = 0; alliance < 2; alliance++)
+            {
+                bool red = alliance == 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    float x = .03683f + i * .071628f;
+                    float y = .03683f;
+                    if (!red) { x = Arena.Size - x; y = Arena.Size - y; }
+                    SpawnBall(PieceKind.Pollen, Arena.World(x, y, .04f));
+                }
+            }
+        }
+        else if (TrainingBallsPreset == "sparse")
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                float angle = i * Mathf.Tau / 12;
+                float dist = 0.8f + (i % 3) * 0.3f;
+                SpawnBall(PieceKind.Pollen, Arena.World(Arena.Center + Mathf.Cos(angle) * dist, Arena.Center + Mathf.Sin(angle) * dist, .04f));
+            }
+        }
+        else if (TrainingBallsPreset == "full")
+        {
+            for (int i = 0; i < 28; i++)
+            {
+                float angle = i * Mathf.Tau / 28;
+                float dist = 0.5f + (i % 4) * 0.25f;
+                SpawnBall(PieceKind.Pollen, Arena.World(Arena.Center + Mathf.Cos(angle) * dist, Arena.Center + Mathf.Sin(angle) * dist, .04f));
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                SpawnBall(PieceKind.RedNectar, Arena.World(Arena.Center - 0.7f + i * 0.35f, Arena.Center - 0.6f, .04f));
+                SpawnBall(PieceKind.BlueNectar, Arena.World(Arena.Center - 0.7f + i * 0.35f, Arena.Center + 0.6f, .04f));
+            }
+        }
+        else
+        {
+            for (int alliance = 0; alliance < 2; alliance++)
+            {
+                bool red = alliance == 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    float x = .03683f + i * .071628f;
+                    float y = .03683f;
+                    if (!red) { x = Arena.Size - x; y = Arena.Size - y; }
+                    SpawnBall(PieceKind.Pollen, Arena.World(x, y, .04f));
+                }
+            }
+        }
+    }
+
+    public static readonly (string Name, Vector3 Position, float Heading)[] DefaultStartingPositions = new[]
+    {
+        ("Red Near (Audience)", new Vector3(.84f, 0, -.26f), 0f),
+        ("Red Far (Backstage)", new Vector3(.28f, 0, -2.75f), 0f),
+        ("Blue Near (Audience)", new Vector3(Arena.Size - .84f, 0, -Arena.Size + .26f), Mathf.Pi),
+        ("Blue Far (Backstage)", new Vector3(Arena.Size - .28f, 0, -.84f), Mathf.Pi)
+    };
+    public Vector3? CustomStartingPosition;
+    public float CustomStartingHeading;
+    public RobotProfile CustomStartingProfile;
+
+    public void ApplyTrainingSettings()
+    {
+        if (Robots.Count == 0) return;
+
+        int activeCount = TrainingSolo ? 1 : Mathf.Clamp(TrainingRobotCount, 1, 4);
+
+        Vector3[][] placementPositions = new[]
+        {
+            new[] {
+                new Vector3(.84f, 0, -.26f),
+                new Vector3(.28f, 0, -2.75f),
+                new Vector3(Arena.Size - .84f, 0, -Arena.Size + .26f),
+                new Vector3(Arena.Size - .28f, 0, -.84f)
+            },
+            new[] {
+                new Vector3(.84f, 0, -.26f),
+                new Vector3(Arena.Center - .4f, 0, -Arena.Center + .6f),
+                new Vector3(Arena.Center + .4f, 0, -Arena.Center - .6f),
+                new Vector3(Arena.Center, 0, -Arena.Center - .8f)
+            },
+            new[] {
+                new Vector3(.84f, 0, -.26f),
+                new Vector3(1.2f, 0, -2.2f),
+                new Vector3(2.4f, 0, -1.2f),
+                new Vector3(3.0f, 0, -2.8f)
+            },
+            new[] {
+                new Vector3(.84f, 0, -.26f),
+                new Vector3(.35f, 0, -.35f),
+                new Vector3(Arena.Size - .35f, 0, -Arena.Size + .35f),
+                new Vector3(Arena.Size - .35f, 0, -.35f)
+            }
+        };
+
+        var positions = placementPositions[Mathf.Clamp(TrainingPlacement, 0, placementPositions.Length - 1)];
+
+        for (int i = 0; i < Robots.Count; i++)
+        {
+            var r = Robots[i];
+            bool active = false;
+            if (activeCount == 1)
+            {
+                active = (i == 0);
+            }
+            else if (activeCount == 2)
+            {
+                active = (i == 0 || i == 2);
+            }
+            else if (activeCount == 3)
+            {
+                if (TrainingThreeWithAlly)
+                    active = (i == 0 || i == 1 || i == 2);
+                else
+                    active = (i == 0 || i == 2 || i == 3);
+            }
+            else
+            {
+                active = true;
+            }
+
+            r.Visible = active;
+            r.CollisionLayer = active ? 4u : 0u;
+            r.CollisionMask = active ? (1u | 2u | 4u) : 0u;
+            r.ProcessMode = active ? ProcessModeEnum.Inherit : ProcessModeEnum.Disabled;
+
+            if (active && i > 0)
+            {
+                r.Position = positions[i];
+                r.Rotation = new Vector3(0, i >= 2 ? Mathf.Pi : 0, 0);
+                r.Velocity = Vector3.Zero;
+                r.Bot = true;
+            }
+        }
+
+        if (TrainingGround)
+        {
+            AutonomousDrill = true;
+            Practice = false;
+        }
+        else if (TrainingAutonomousMode)
+        {
+            AutonomousDrill = true;
+        }
+
+        if (SelectedStartingPositionIndex >= 0 && SelectedStartingPositionIndex <= 4)
+        {
+            SetPlayerStartingPosition(SelectedStartingPositionIndex);
+        }
+    }
+
+    public void SetFieldBallsPreset(string preset)
+    {
+        TrainingBallsPreset = preset;
+        TrainingFloorBallsConfigured = true;
+        CustomTrainingFloorBalls.Clear();
+        var loose = Balls.Where(IsFloorBall).ToList();
+        foreach (var b in loose) RemoveBall(b);
+        if (preset == "clear")
+        {
+            Status = "Floor balls cleared (0 loose balls)";
+        }
+        else if (preset == "ftc" || preset == "official")
+        {
+            for (int alliance = 0; alliance < 2; alliance++)
+            {
+                bool red = alliance == 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    float x = .03683f + i * .071628f;
+                    float y = .03683f;
+                    if (!red) { x = Arena.Size - x; y = Arena.Size - y; }
+                    SpawnBall(PieceKind.Pollen, Arena.World(x, y, .04f));
+                }
+            }
+            Status = "Official FTC match ball distribution restored (8 perimeter balls)";
+        }
+        else if (preset == "sparse")
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                float angle = i * Mathf.Tau / 12;
+                float dist = 0.8f + (i % 3) * 0.3f;
+                SpawnBall(PieceKind.Pollen, Arena.World(Arena.Center + Mathf.Cos(angle) * dist, Arena.Center + Mathf.Sin(angle) * dist, .04f));
+            }
+            Status = "Sparse floor balls set (12 balls)";
+        }
+        else if (preset == "full")
+        {
+            for (int i = 0; i < 28; i++)
+            {
+                float angle = i * Mathf.Tau / 28;
+                float dist = 0.5f + (i % 4) * 0.25f;
+                SpawnBall(PieceKind.Pollen, Arena.World(Arena.Center + Mathf.Cos(angle) * dist, Arena.Center + Mathf.Sin(angle) * dist, .04f));
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                SpawnBall(PieceKind.RedNectar, Arena.World(Arena.Center - 0.7f + i * 0.35f, Arena.Center - 0.6f, .04f));
+                SpawnBall(PieceKind.BlueNectar, Arena.World(Arena.Center - 0.7f + i * 0.35f, Arena.Center + 0.6f, .04f));
+            }
+            Status = "Full field ball distribution restored (36 balls)";
+        }
+    }
+
+    public void SetRobotInventoryPreset(int pollenCount, int nectarCount)
+    {
+        TrainingInventoryPollen = pollenCount;
+        TrainingInventoryNectar = nectarCount;
+        TrainingInventoryConfigured = true;
+        if (Player == null) return;
+        Player.Inventory.Clear();
+        for (int i = 0; i < pollenCount && Player.Inventory.Count < Player.Capacity; i++)
+            Player.Inventory.Add(PieceKind.Pollen);
+        for (int i = 0; i < nectarCount && Player.Inventory.Count < Player.Capacity; i++)
+            Player.Inventory.Add(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar);
+        Status = $"Inventory set: {Player.Inventory.Count} pieces ({pollenCount} Pollen, {nectarCount} Nectar)";
+    }
+
+    public void SetPlayerStartingPosition(int presetIndex)
+    {
+        SelectedStartingPositionIndex = presetIndex;
+        if (Player == null) return;
+        if (presetIndex >= 0 && presetIndex < DefaultStartingPositions.Length)
+        {
+            var pos = DefaultStartingPositions[presetIndex];
+            Player.Position = pos.Position;
+            Player.Rotation = new Vector3(0, pos.Heading, 0);
+            Player.Velocity = Vector3.Zero;
+            Player.Command = Vector3.Zero;
+            Player.TurnCommand = 0f;
+            Status = $"Loaded position: {pos.Name}";
+        }
+        else if (presetIndex == 4)
+        {
+            Vector3 pos = CustomStartingPosition ?? new Vector3(1.8f, 0, -1.8f);
+            float heading = CustomStartingHeading;
+            if (CustomStartingProfile != null)
+            {
+                bool needReset = Profile.Name != CustomStartingProfile.Name;
+                Profile = CustomStartingProfile.Copy();
+                if (needReset && Started)
+                {
+                    Reset(true);
+                }
+            }
+            if (Player != null)
+            {
+                Player.Width = Profile.WidthCm / 100;
+                Player.Length = Profile.LengthCm / 100;
+                Player.Speed = Profile.Speed;
+                Player.Acceleration = Profile.Acceleration;
+                Player.TurnSpeed = Profile.TurnSpeed;
+                Player.TurretCount = Profile.Turrets;
+                Player.IntakeCount = Profile.Intakes;
+                Player.Imported = Profile.Imported;
+                Player.Position = pos;
+                Player.Rotation = new Vector3(0, heading, 0);
+                Player.Velocity = Vector3.Zero;
+                Player.Command = Vector3.Zero;
+                Player.TurnCommand = 0f;
+            }
+            Status = "Loaded custom robot & position";
+        }
+    }
+
+    public void SaveCurrentAsCustomPosition()
+    {
+        if (Player == null) return;
+        CustomStartingPosition = Player.Position;
+        CustomStartingHeading = Player.Rotation.Y;
+        CustomStartingProfile = Profile.Copy();
+        Status = $"Saved custom position ({Player.Position.X:0.00}, {Player.Position.Z:0.00}) & robot '{Profile.Name}'";
+    }
+
+    public sealed class ControlsConfig
+    {
+        public bool RobotCentric { get; set; } = true;
+        public Key DriveMode { get; set; } = Key.N;
+        public Key Forward { get; set; } = Key.W;
+        public Key Backward { get; set; } = Key.S;
+        public Key Left { get; set; } = Key.A;
+        public Key Right { get; set; } = Key.D;
+        public Key TurnLeft { get; set; } = Key.Q;
+        public Key TurnRight { get; set; } = Key.E;
+        public Key Intake { get; set; } = Key.Shift;
+        public Key Launch { get; set; } = Key.Space;
+        public Key Target { get; set; } = Key.T;
+        public Key Camera { get; set; } = Key.C;
+        public Key Reset { get; set; } = Key.R;
+        public Key Human { get; set; } = Key.H;
+        public Key Extract { get; set; } = Key.K;
+    }
+
+    public void SaveControls()
+    {
+        try
+        {
+            var config = new ControlsConfig
+            {
+                RobotCentric = RobotCentricDrive,
+                DriveMode = KeyDriveMode,
+                Forward = KeyForward,
+                Backward = KeyBackward,
+                Left = KeyLeft,
+                Right = KeyRight,
+                TurnLeft = KeyTurnLeft,
+                TurnRight = KeyTurnRight,
+                Intake = KeyIntake,
+                Launch = KeyLaunch,
+                Target = KeyTarget,
+                Camera = KeyCamera,
+                Reset = KeyReset,
+                Human = KeyHuman,
+                Extract = KeyExtract
+            };
+            using var file = Godot.FileAccess.Open("user://controls.json", Godot.FileAccess.ModeFlags.Write);
+            if (file != null)
+            {
+                file.StoreString(JsonSerializer.Serialize(config));
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning("Failed to save controls: " + ex.Message);
+        }
+    }
+
+    public void LoadControls()
+    {
+        try
+        {
+            if (Godot.FileAccess.FileExists("user://controls.json"))
+            {
+                string json = Godot.FileAccess.GetFileAsString("user://controls.json");
+                var config = JsonSerializer.Deserialize<ControlsConfig>(json);
+                if (config != null)
+                {
+                    RobotCentricDrive = config.RobotCentric;
+                    KeyDriveMode = config.DriveMode;
+                    KeyForward = config.Forward;
+                    KeyBackward = config.Backward;
+                    KeyLeft = config.Left;
+                    KeyRight = config.Right;
+                    KeyTurnLeft = config.TurnLeft;
+                    KeyTurnRight = config.TurnRight;
+                    KeyIntake = config.Intake;
+                    KeyLaunch = config.Launch;
+                    KeyTarget = config.Target;
+                    KeyCamera = config.Camera;
+                    KeyReset = config.Reset;
+                    KeyHuman = config.Human;
+                    KeyExtract = config.Extract;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning("Failed to load controls: " + ex.Message);
+        }
+    }
 
     public void ResetKeyBindings()
     {
+        RobotCentricDrive = true;
+        KeyDriveMode = Key.N;
         KeyForward = Key.W;
         KeyBackward = Key.S;
         KeyLeft = Key.A;
@@ -47,13 +560,213 @@ public partial class Simulation : Node3D
         KeyReset = Key.R;
         KeyHuman = Key.H;
         KeyExtract = Key.K;
+        SaveControls();
+    }
+
+    public class TrainingBallDataDto
+    {
+        public int Kind { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+    }
+
+    public class SettingsConfig
+    {
+        public bool Fullscreen { get; set; }
+        public bool Vsync { get; set; } = true;
+        public bool ShowTrajectory { get; set; } = true;
+        public int CameraMode { get; set; } = 0;
+        public float CameraDistance { get; set; } = 5.2f;
+        public float CameraFov { get; set; } = 45f;
+        public bool OpponentAi { get; set; } = true;
+        public bool TwoPlayers { get; set; } = false;
+        public bool RobotCentric { get; set; } = false;
+
+        public int TrainingRobotCount { get; set; } = 1;
+        public bool TrainingSolo { get; set; } = true;
+        public bool TrainingThreeWithAlly { get; set; } = true;
+        public int TrainingPlacement { get; set; } = 0;
+        public bool TrainingAutonomousMode { get; set; } = false;
+
+        public float? CustomStartX { get; set; }
+        public float? CustomStartY { get; set; }
+        public float? CustomStartZ { get; set; }
+        public float CustomStartHeading { get; set; }
+        public int SelectedStartingPositionIndex { get; set; } = 0;
+
+        public string PlayerProfileName { get; set; }
+        public string[] AiSlotProfileNames { get; set; }
+
+        public int TrainingInventoryPollen { get; set; } = 0;
+        public int TrainingInventoryNectar { get; set; } = 0;
+        public bool TrainingInventoryConfigured { get; set; } = false;
+        public string TrainingBallsPreset { get; set; } = "full";
+        public bool TrainingFloorBallsConfigured { get; set; } = false;
+        public float TrainingTimeMultiplier { get; set; } = 1.0f;
+        public string[] AssignedAutonomousPaths { get; set; }
+        public List<TrainingBallDataDto> CustomTrainingBalls { get; set; } = new();
+    }
+
+    public void SaveSettings()
+    {
+        try
+        {
+            var config = new SettingsConfig
+            {
+                Fullscreen = DisplayServer.WindowGetMode() == DisplayServer.WindowMode.Fullscreen,
+                Vsync = DisplayServer.WindowGetVsyncMode() != DisplayServer.VSyncMode.Disabled,
+                ShowTrajectory = ShowTrajectory,
+                CameraMode = Camera != null ? Camera.Mode : 0,
+                CameraDistance = Camera != null ? Camera.Distance : 5.2f,
+                CameraFov = Camera != null ? Camera.Fov : 45f,
+                OpponentAi = OpponentAi,
+                TwoPlayers = TwoPlayers,
+                RobotCentric = RobotCentricDrive,
+
+                TrainingRobotCount = TrainingRobotCount,
+                TrainingSolo = TrainingSolo,
+                TrainingThreeWithAlly = TrainingThreeWithAlly,
+                TrainingPlacement = TrainingPlacement,
+                TrainingAutonomousMode = TrainingAutonomousMode,
+
+                CustomStartX = CustomStartingPosition?.X,
+                CustomStartY = CustomStartingPosition?.Y,
+                CustomStartZ = CustomStartingPosition?.Z,
+                CustomStartHeading = CustomStartingHeading,
+                SelectedStartingPositionIndex = SelectedStartingPositionIndex,
+
+                PlayerProfileName = Profile?.Name,
+                AiSlotProfileNames = new string[]
+                {
+                    AiSlotProfiles[0]?.Name ?? "",
+                    AiSlotProfiles[1]?.Name ?? "",
+                    AiSlotProfiles[2]?.Name ?? ""
+                },
+
+                TrainingInventoryPollen = TrainingInventoryPollen,
+                TrainingInventoryNectar = TrainingInventoryNectar,
+                TrainingInventoryConfigured = TrainingInventoryConfigured,
+                TrainingBallsPreset = TrainingBallsPreset,
+                TrainingFloorBallsConfigured = TrainingFloorBallsConfigured,
+                TrainingTimeMultiplier = TrainingTimeMultiplier,
+                AssignedAutonomousPaths = (string[])AssignedAutonomousPaths.Clone(),
+                CustomTrainingBalls = CustomTrainingFloorBalls.Select(b => new TrainingBallDataDto
+                {
+                    Kind = (int)b.Kind,
+                    X = b.Position.X,
+                    Y = b.Position.Y,
+                    Z = b.Position.Z
+                }).ToList()
+            };
+            using var file = Godot.FileAccess.Open("user://settings.json", Godot.FileAccess.ModeFlags.Write);
+            if (file != null)
+            {
+                file.StoreString(JsonSerializer.Serialize(config));
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning("Failed to save settings: " + ex.Message);
+        }
+    }
+
+    public void LoadSettings()
+    {
+        try
+        {
+            if (Godot.FileAccess.FileExists("user://settings.json"))
+            {
+                string json = Godot.FileAccess.GetFileAsString("user://settings.json");
+                var config = JsonSerializer.Deserialize<SettingsConfig>(json);
+                if (config != null)
+                {
+                    if (config.Fullscreen)
+                        DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+                    DisplayServer.WindowSetVsyncMode(config.Vsync ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled);
+                    ShowTrajectory = config.ShowTrajectory;
+                    if (Camera != null)
+                    {
+                        Camera.Mode = config.CameraMode;
+                        if (config.CameraDistance > 0) Camera.Distance = config.CameraDistance;
+                        if (config.CameraFov > 0) Camera.Fov = config.CameraFov;
+                    }
+                    OpponentAi = config.OpponentAi;
+                    TwoPlayers = config.TwoPlayers;
+                    RobotCentricDrive = config.RobotCentric;
+
+                    TrainingRobotCount = Mathf.Clamp(config.TrainingRobotCount, 1, 4);
+                    TrainingSolo = config.TrainingSolo;
+                    TrainingThreeWithAlly = config.TrainingThreeWithAlly;
+                    TrainingPlacement = Mathf.Clamp(config.TrainingPlacement, 0, 3);
+                    TrainingAutonomousMode = config.TrainingAutonomousMode;
+
+                    if (config.CustomStartX.HasValue && config.CustomStartZ.HasValue)
+                    {
+                        CustomStartingPosition = new Vector3(config.CustomStartX.Value, config.CustomStartY ?? 0f, config.CustomStartZ.Value);
+                        CustomStartingHeading = config.CustomStartHeading;
+                    }
+                    SelectedStartingPositionIndex = config.SelectedStartingPositionIndex;
+
+                    var roster = RobotRoster.GetRoster();
+                    if (!string.IsNullOrEmpty(config.PlayerProfileName))
+                    {
+                        var playerMatch = roster.Find(r => r.Name == config.PlayerProfileName);
+                        if (playerMatch != null) Profile = playerMatch.Copy();
+                    }
+                    if (config.AiSlotProfileNames != null)
+                    {
+                        for (int i = 0; i < 3 && i < config.AiSlotProfileNames.Length; i++)
+                        {
+                            string aName = config.AiSlotProfileNames[i];
+                            if (!string.IsNullOrEmpty(aName))
+                            {
+                                var match = roster.Find(r => r.Name == aName);
+                                if (match != null) AiSlotProfiles[i] = match.Copy();
+                            }
+                        }
+                    }
+
+                    TrainingInventoryPollen = config.TrainingInventoryPollen;
+                    TrainingInventoryNectar = config.TrainingInventoryNectar;
+                    TrainingInventoryConfigured = config.TrainingInventoryConfigured;
+                    TrainingBallsPreset = string.IsNullOrEmpty(config.TrainingBallsPreset) ? "full" : config.TrainingBallsPreset;
+                    TrainingFloorBallsConfigured = config.TrainingFloorBallsConfigured;
+                    TrainingTimeMultiplier = config.TrainingTimeMultiplier > 0 ? config.TrainingTimeMultiplier : 1.0f;
+                    if (config.AssignedAutonomousPaths != null)
+                    {
+                        for (int i = 0; i < 4 && i < config.AssignedAutonomousPaths.Length; i++)
+                        {
+                            if (!string.IsNullOrEmpty(config.AssignedAutonomousPaths[i]))
+                                AssignedAutonomousPaths[i] = config.AssignedAutonomousPaths[i];
+                        }
+                    }
+                    CustomTrainingFloorBalls.Clear();
+                    if (config.CustomTrainingBalls != null)
+                    {
+                        foreach (var b in config.CustomTrainingBalls)
+                        {
+                            CustomTrainingFloorBalls.Add(new TrainingBallData
+                            {
+                                Kind = (PieceKind)b.Kind,
+                                Position = new Vector3(b.X, b.Y, b.Z)
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning("Failed to load settings: " + ex.Message);
+        }
     }
 
     private readonly HashSet<GamePiece> _redScoredHive = new();
     private readonly HashSet<GamePiece> _blueScoredHive = new();
-    public bool Finished => !Practice && _elapsed >= (AutonomousDrill ? 30 : 158);
+    public bool Finished => !Practice && !TrainingGround && _elapsed >= (AutonomousDrill ? 30 : 158);
     public bool Running => Started && !Paused && !Finished;
-    public bool DrivingAllowed => Running && (Practice || Elapsed < 30 || Elapsed >= 38);
+    public bool DrivingAllowed => Running && Countdown <= 0 && (Practice || (TrainingGround && TrainingLoopActive) || Elapsed < 30 || Elapsed >= 38);
     private double _elapsed;
     private double _observationTime;
     private bool _wasTransition;
@@ -63,6 +776,7 @@ public partial class Simulation : Node3D
     public bool AimFlower;
     public RobotProfile Profile = RobotProfile.Load();
     public RobotProfile AiProfile = new RobotProfile { Name = "AI Opponent Standard" };
+    public readonly RobotProfile[] AiSlotProfiles = new RobotProfile[3];
     public bool Testing;
     private Node3D _session;
     private readonly Dictionary<GamePiece, (Vector3 Linear, Vector3 Angular)> _pausedVelocities = new();
@@ -73,9 +787,11 @@ public partial class Simulation : Node3D
     private int _redLastTips, _blueLastTips;
     public override void _Ready()
     {
+        LoadControls();
+        LoadSettings();
         foreach (var arg in OS.GetCmdlineUserArgs())
-            if (arg.StartsWith("--physics-test-") && int.TryParse(arg.Substring(15),out int ticks) && ticks>=120 && ticks<=1920)
-                Engine.PhysicsTicksPerSecond=ticks;
+            if (arg.StartsWith("--physics-test-") && int.TryParse(arg.Substring(15), out int ticks) && ticks >= 120 && ticks <= 1920)
+                Engine.PhysicsTicksPerSecond = ticks;
         AddChild(new Arena { Name = "Arena" });
         Camera = new OrbitCamera { Game = this, Current = true, Fov = 46, Far = 50, Near = .02f, Name = "Camera" }; AddChild(Camera);
         Hud = new SimulatorHud { Game = this }; AddChild(Hud);
@@ -105,8 +821,10 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
     private async void JointControlsTest() => await JointControlChecks.Run(this);
     public void Reset(bool start = true)
     {
+        StopAutonomousPathRunners();
         if (_session != null) { RemoveChild(_session); _session.QueueFree(); }
         Balls.Clear(); Robots.Clear(); _pausedVelocities.Clear(); Elapsed = 0; Paused = false; Started = start;
+        _lastIntakePressed = _lastIntakePressedSecond = _lastJoyIntakePressed = _lastJoyIntakePressedSecond = false;
         _observationTime=0; _wasTransition=false;
         _redScoredHive.Clear(); _blueScoredHive.Clear();
         if (PathEditor != null) PathEditor.Following = false;
@@ -120,31 +838,54 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         for (int i = 0; i < 4; i++)
         {
             var robot = new RobotAgent { Game = this, Red = i < 2, Number = i % 2 + 1, Bot = i > 0 && !(TwoPlayers && i == 2), Position = starts[i], Name = $"Robot{i + 1}" };
-            var p = (i == 0) ? Profile : (AiProfile ?? Profile);
+            var p = (i == 0) ? Profile : (AiSlotProfiles[i - 1] ?? AiProfile ?? Profile);
             robot.Width = p.WidthCm / 100; robot.Length = p.LengthCm / 100; robot.Speed = p.Speed; robot.Acceleration = p.Acceleration; robot.TurnSpeed = p.TurnSpeed; robot.TurretCount = p.Turrets; robot.IntakeCount = p.Intakes; robot.Imported = p.Imported;
             robot.Rotation = new(0, i >= 2 ? Mathf.Pi : 0, 0);
             _session.AddChild(robot); Robots.Add(robot);
-            for (int j = 0; j < 4; j++) robot.Inventory.Add(PieceKind.Pollen);
-        }
-        if (TrainingGround)
-        {
-            for (int i = 1; i < Robots.Count; i++)
+            if (TrainingGround && TrainingInventoryConfigured)
             {
-                Robots[i].Visible = false;
-                Robots[i].CollisionLayer = 0;
-                Robots[i].ProcessMode = ProcessModeEnum.Disabled;
+                if (i == 0)
+                {
+                    for (int j = 0; j < TrainingInventoryPollen && robot.Inventory.Count < robot.Capacity; j++)
+                        robot.Inventory.Add(PieceKind.Pollen);
+                    for (int j = 0; j < TrainingInventoryNectar && robot.Inventory.Count < robot.Capacity; j++)
+                        robot.Inventory.Add(robot.Red ? PieceKind.RedNectar : PieceKind.BlueNectar);
+                }
+                else
+                {
+                    for (int j = 0; j < 4; j++) robot.Inventory.Add(PieceKind.Pollen);
+                }
             }
+            else
+            {
+                for (int j = 0; j < 4; j++) robot.Inventory.Add(PieceKind.Pollen);
+            }
+        }
+        if (TrainingGround || (Practice && !Testing))
+        {
+            ApplyTrainingSettings();
+        }
+        if ((TrainingGround || AutonomousDrill) && !Testing)
+        {
+            Countdown = (TrainingGround && !TrainingLoopActive) ? 0f : 3.0f;
+        }
+        else
+        {
+            Countdown = 0f;
         }
         // 40 POLLEN + 8 NECTAR roșii + 8 NECTAR albastre, inclusiv inventarele.
         for (int alliance = 0; alliance < 2; alliance++)
         {
             bool red = alliance == 0;
-            for (int i = 0; i < 4; i++)
+            if (!TrainingGround || !TrainingFloorBallsConfigured)
             {
-                float x = .03683f + i * .071628f;
-                float y = .03683f;
-                if (!red) { x = Arena.Size - x; y = Arena.Size - y; }
-                SpawnBall(PieceKind.Pollen, Arena.World(x, y, .04f));
+                for (int i = 0; i < 4; i++)
+                {
+                    float x = .03683f + i * .071628f;
+                    float y = .03683f;
+                    if (!red) { x = Arena.Size - x; y = Arena.Size - y; }
+                    SpawnBall(PieceKind.Pollen, Arena.World(x, y, .04f));
+                }
             }
             for (int i = 0; i < 5; i++)
             {
@@ -161,6 +902,10 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
                 ball.Preload = true;
                 hive.Store(ball, hive.UpSide);
             }
+        }
+        if (TrainingGround && TrainingFloorBallsConfigured)
+        {
+            SpawnTrainingFloorBalls();
         }
         Vector3[] inward = { Vector3.Right, Vector3.Back, Vector3.Left, Vector3.Forward };
         for (int i = 0; i < 4; i++)
@@ -209,8 +954,32 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
     public override void _PhysicsProcess(double delta)
     {
         if (!Running) return;
+        if (TrainingGround && !TrainingLoopActive)
+        {
+            foreach (var robot in Robots)
+            {
+                robot.Velocity = Vector3.Zero;
+                robot.Command = Vector3.Zero;
+                robot.TurnCommand = 0f;
+            }
+            return;
+        }
+        if (Countdown > 0)
+        {
+            Countdown -= (float)delta;
+            if (Countdown < 0) Countdown = 0;
+            return;
+        }
         _elapsed += delta;
-        if (!Practice && _elapsed >= (AutonomousDrill ? 30 : 158))
+        if (TrainingGround)
+        {
+            if (TrainingLoopActive && _elapsed >= 30.0f)
+            {
+                ResetTrainingCycle();
+                return;
+            }
+        }
+        else if (!Practice && _elapsed >= (AutonomousDrill ? 30 : 158))
         {
             _elapsed = AutonomousDrill ? 30 : 158;
             UpdateScore();
@@ -239,6 +1008,16 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         _observationTime = Math.Max(0, _observationTime - ControlStep);
         if (!transition)
         {
+            if (DrivingAllowed)
+            {
+                for (int i = 0; i < Robots.Count && i < PathRunners.Length; i++)
+                {
+                    if (PathRunners[i] != null && PathRunners[i].IsRunning)
+                    {
+                        PathRunners[i].Update(ControlStep);
+                    }
+                }
+            }
             if (!Testing) { ReadPlayer(Player, false); if (TwoPlayers) ReadPlayer(Robots[2], true); }
         }
         foreach (var flower in Flowers) flower.Update();
@@ -272,12 +1051,46 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
     }
     private void ReadPlayer(RobotAgent robot, bool second)
     {
-        if (!Practice && Elapsed < 30)
+        if (TrainingGround)
+        {
+            robot.Bot = false;
+            if (TrainingLoopActive)
+            {
+                if (!second && PathRunners.Length > 0 && PathRunners[0] != null && PathRunners[0].IsRunning)
+                {
+                    bool HeldKey(Key key) => Input.IsPhysicalKeyPressed(key);
+                    var vCheck = new Vector3((HeldKey(KeyRight) ? 1 : 0) - (HeldKey(KeyLeft) ? 1 : 0), 0, (HeldKey(KeyBackward) ? 1 : 0) - (HeldKey(KeyForward) ? 1 : 0));
+                    float turnCheck = (HeldKey(KeyTurnLeft) ? 1 : 0) - (HeldKey(KeyTurnRight) ? 1 : 0);
+                    if (vCheck.LengthSquared() > 0 || Mathf.Abs(turnCheck) > 0.001f)
+                    {
+                        PathRunners[0].Stop();
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+                else if (!second && PathEditor != null && PathEditor.Following)
+                {
+                    robot.Command = PathEditor.Command();
+                    robot.TurnCommand = PathEditor.TurnCommand();
+                    return;
+                }
+            }
+            else
+            {
+                robot.Command = Vector3.Zero;
+                robot.TurnCommand = 0f;
+                return;
+            }
+        }
+        else if (!Practice && Elapsed < 30)
         {
             if (!second && PathEditor != null && PathEditor.Following)
             {
                 robot.Bot = false;
                 robot.Command = PathEditor.Command();
+                robot.TurnCommand = PathEditor.TurnCommand();
                 return;
             }
             robot.Bot = true;
@@ -287,15 +1100,34 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         bool Held(Key key) => Input.IsPhysicalKeyPressed(key);
         var v = second ? new Vector3((Held(Key.Right) ? 1 : 0) - (Held(Key.Left) ? 1 : 0), 0, (Held(Key.Down) ? 1 : 0) - (Held(Key.Up) ? 1 : 0))
             : new Vector3((Held(KeyRight) ? 1 : 0) - (Held(KeyLeft) ? 1 : 0), 0, (Held(KeyBackward) ? 1 : 0) - (Held(KeyForward) ? 1 : 0));
-        robot.Command = Camera.ToGroundMovement(new Vector2(v.X, v.Z));
+        if (v.LengthSquared() > 0)
+        {
+            Vector3 worldDir = RobotCentricDrive ? (robot.GlobalBasis * new Vector3(v.X, 0, v.Z)) : Camera.ToGroundMovement(new Vector2(v.X, v.Z));
+            worldDir.Y = 0;
+            robot.Command = worldDir.Normalized();
+        }
+        else
+        {
+            robot.Command = Vector3.Zero;
+        }
         if (!second && Practice && PathEditor.Following)
         {
             if (v.LengthSquared() > 0) PathEditor.Following = false;
-            else robot.Command = PathEditor.Command();
+            else
+            {
+                robot.Command = PathEditor.Command();
+                robot.TurnCommand = PathEditor.TurnCommand();
+            }
         }
         robot.TurnCommand = second ? (Held(Key.Comma) ? 1 : 0) - (Held(Key.Period) ? 1 : 0) : (Held(KeyTurnLeft) ? 1 : 0) - (Held(KeyTurnRight) ? 1 : 0);
-        robot.Intake = (Held(second ? Key.Enter : KeyIntake) && (second || !Input.IsMouseButtonPressed(MouseButton.Middle)))
+        bool intakePressed = (Held(second ? Key.Enter : KeyIntake) && (second || !Input.IsMouseButtonPressed(MouseButton.Middle)))
             || (!second && Held(Key.J));
+        ref bool lastIntake = ref (second ? ref _lastIntakePressedSecond : ref _lastIntakePressed);
+        if (intakePressed && !lastIntake)
+        {
+            robot.Intake = !robot.Intake;
+        }
+        lastIntake = intakePressed;
         robot.FireCommand = Held(second ? Key.Slash : KeyLaunch);
         int pad = second ? 1 : 0;
         if (Input.GetConnectedJoypads().Contains(pad))
@@ -304,10 +1136,18 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             if (axes.Length() > .15f)
             {
                 if (!second) PathEditor.Following = false;
-                robot.Command = Camera.ToGroundMovement(axes);
+                Vector3 worldJoy = RobotCentricDrive ? (robot.GlobalBasis * new Vector3(axes.X, 0, axes.Y)) : Camera.ToGroundMovement(new Vector2(axes.X, axes.Y));
+                worldJoy.Y = 0;
+                robot.Command = worldJoy.LimitLength(1f);
             }
             float turn = Input.GetJoyAxis(pad, JoyAxis.RightX); if (Mathf.Abs(turn) > .15f) robot.TurnCommand = -turn;
-            robot.Intake |= Input.IsJoyButtonPressed(pad, JoyButton.LeftShoulder);
+            bool joyIntake = Input.IsJoyButtonPressed(pad, JoyButton.LeftShoulder);
+            ref bool lastJoy = ref (second ? ref _lastJoyIntakePressedSecond : ref _lastJoyIntakePressed);
+            if (joyIntake && !lastJoy)
+            {
+                robot.Intake = !robot.Intake;
+            }
+            lastJoy = joyIntake;
             robot.FireCommand |= Input.IsJoyButtonPressed(pad, JoyButton.RightShoulder);
         }
     }
@@ -343,8 +1183,14 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             else if (k.PhysicalKeycode == KeyCamera) Camera.Mode = (Camera.Mode + 1) % 3;
             else if (k.PhysicalKeycode == KeyReset) Reset();
             else if (k.PhysicalKeycode == KeyTarget) AimFlower = !AimFlower;
+            else if (k.PhysicalKeycode == KeyDriveMode)
+            {
+                RobotCentricDrive = !RobotCentricDrive;
+                Status = RobotCentricDrive ? "Drive Mode: Robot-Centric (Heading)" : "Drive Mode: Camera-Centric (Screen)";
+                SaveControls();
+            }
             else if (k.PhysicalKeycode == Key.B && Practice && Running) SpawnBall(PieceKind.Pollen, Player.Position + Player.Front * .5f + Vector3.Up * .12f);
-            else if (k.PhysicalKeycode == Key.N && Practice && Running) SpawnBall(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar, Player.Position + Player.Front * .5f + Vector3.Up * .12f);
+            else if (k.PhysicalKeycode == Key.M && Practice && Running) SpawnBall(Player.Red ? PieceKind.RedNectar : PieceKind.BlueNectar, Player.Position + Player.Front * .5f + Vector3.Up * .12f);
             else if (k.PhysicalKeycode == KeyHuman) DropHuman(Player.Red);
             else if (k.PhysicalKeycode == KeyExtract) KnockFlower(Player);
             else if (k.PhysicalKeycode == Key.I) Player.Rig?.SelectNextMotor();
@@ -471,7 +1317,11 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             }
         }
         var profile=data.Profile?.Copy() ?? new RobotProfile(); profile.Validate();
-        for (int i = 0; i < data.Robots.Length; i++) RobotLinkState.Validate(data.Robots[i].Mechanisms, i == 0 ? profile.Imported : null);
+        for (int i = 0; i < data.Robots.Length; i++)
+        {
+            var rDef = (i == 0) ? profile.Imported : (AiSlotProfiles[i - 1] ?? AiProfile ?? profile)?.Imported;
+            RobotLinkState.Validate(data.Robots[i].Mechanisms, rDef);
+        }
         Practice=data.Practice; TwoPlayers=data.TwoPlayers; Profile=profile; AimFlower=data.AimFlower; Reset(); Elapsed=data.Time;
         for (int i = 0; i < 4; i++)
         {
@@ -570,7 +1420,9 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             Testing = true; Practice = true; Reset(); foreach (var r in Robots) r.Bot = false;
             Hud.ShowMenu();
             Hud.NavigateTo(SimulatorHud.ScreenType.RobotCreator);
+            Hud.NavigateTo(SimulatorHud.ScreenType.PracticePositions);
             Hud.NavigateTo(SimulatorHud.ScreenType.AutonomousPathing);
+            Hud.NavigateTo(SimulatorHud.ScreenType.AutonomousPathEditor);
             Hud.NavigateTo(SimulatorHud.ScreenType.Settings);
             Hud.NavigateTo(SimulatorHud.ScreenType.Help);
             Hud.NavigateTo(SimulatorHud.ScreenType.Pause);

@@ -95,14 +95,6 @@ public static class ShotPlanner
                     if(progress>bestProgress) { bestProgress=progress; bestBlock=previous.Lerp(point,Mathf.Min(1,fractions[1]+.001f)); }
                     return false;
                 }
-                query.Transform=new(Basis.Identity,point); query.Motion=Vector3.Zero;
-                if(space.IntersectShape(query,1).Count>0)
-                {
-                    float progress=i/(float)segments;
-                    traceProgress=progress;
-                    if(progress>bestProgress) { bestProgress=progress; bestBlock=point; }
-                    return false;
-                }
                 previous=point;
             }
             return true;
@@ -123,28 +115,29 @@ public static class ShotPlanner
             progressScores[Math.Clamp(Mathf.RoundToInt((candidate.Time-.25f)/.025f),0,50)]=traceProgress;
         }
         // Ferestrele înguste dintre panouri pot încăpea între probele de 25 ms.
-        // Rafinăm numai după eșec, păstrând verificarea volumului întregii mingi.
-        // Buget limitat: întâi intervalele ale căror arce ajung cel mai aproape
-        // de țintă înaintea coliziunii, apoi cele cu viteză mică la egalitate.
-        var intervals=new Interval[50];
-        for(int i=0;i<intervals.Length;i++)
+        // Rafinăm numai dacă traiectoria a ajuns aproape de țintă (fără obstacole timpurii).
+        if (bestProgress >= 0.70f)
         {
-            float time=.25f+i*.025f+.0125f;
-            intervals[i]=new(i,Mathf.Max(progressScores[i],progressScores[i+1]),VelocityFor(origin,target,time).LengthSquared());
-        }
-        Array.Sort(intervals,(a,b)=> { int score=b.Progress.CompareTo(a.Progress); return score!=0 ? score : a.Cost.CompareTo(b.Cost); });
-        var refined=new Candidate[RefinementIntervals*4]; int next=0;
-        for(int chosen=0;chosen<RefinementIntervals;chosen++) for(int offset=1;offset<=4;offset++)
-        {
-            float time=.25f+intervals[chosen].Index*.025f+offset*.005f;
-            var velocity=VelocityFor(origin,target,time);
-            refined[next++]=new(velocity,time,velocity.LengthSquared());
-        }
-        Array.Sort(refined,(a,b)=>a.Cost.CompareTo(b.Cost));
-        foreach(var candidate in refined)
-        {
-            if(candidate.Cost>MaximumSpeed*MaximumSpeed) break;
-            if(Trace(candidate)) { plan=new(candidate.Velocity,candidate.Time); return true; }
+            var intervals=new Interval[50];
+            for(int i=0;i<intervals.Length;i++)
+            {
+                float time=.25f+i*.025f+.0125f;
+                intervals[i]=new(i,Mathf.Max(progressScores[i],progressScores[i+1]),VelocityFor(origin,target,time).LengthSquared());
+            }
+            Array.Sort(intervals,(a,b)=> { int score=b.Progress.CompareTo(a.Progress); return score!=0 ? score : a.Cost.CompareTo(b.Cost); });
+            var refined=new Candidate[RefinementIntervals*4]; int next=0;
+            for(int chosen=0;chosen<RefinementIntervals;chosen++) for(int offset=1;offset<=4;offset++)
+            {
+                float time=.25f+intervals[chosen].Index*.025f+offset*.005f;
+                var velocity=VelocityFor(origin,target,time);
+                refined[next++]=new(velocity,time,velocity.LengthSquared());
+            }
+            Array.Sort(refined,(a,b)=>a.Cost.CompareTo(b.Cost));
+            foreach(var candidate in refined)
+            {
+                if(candidate.Cost>MaximumSpeed*MaximumSpeed) break;
+                if(Trace(candidate)) { plan=new(candidate.Velocity,candidate.Time); return true; }
+            }
         }
         query.Transform=new(Basis.Identity,bestBlock); query.Motion=Vector3.Zero;
         diagnosis=speedAllowed ? new(Failure.PathBlocked,Obstacle(),bestBlock) : new(Failure.SpeedLimit,"",target);

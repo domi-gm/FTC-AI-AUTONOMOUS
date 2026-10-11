@@ -23,7 +23,7 @@ public static class RobotRoster
             {
                 string json = FileAccess.GetFileAsString(RosterPath);
                 var list = JsonSerializer.Deserialize<List<RobotProfile>>(json);
-                if (list != null && list.Count > 0)
+                if (list != null)
                 {
                     _cachedRoster = list;
                     return;
@@ -70,7 +70,7 @@ public static class RobotRoster
     public static void Remove(int index)
     {
         GetRoster();
-        if (index >= 0 && index < _cachedRoster.Count && _cachedRoster.Count > 1)
+        if (index >= 0 && index < _cachedRoster.Count)
         {
             _cachedRoster.RemoveAt(index);
             SaveRoster();

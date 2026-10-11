@@ -15,6 +15,7 @@ public partial class SimulatorHud
     }
     private void ImportSetup()
     {
+        _currentScreen = ScreenType.RobotImport;
         _draft ??= Game.Profile.Copy();
         _draft.Imported ??= new ImportedRobotDefinition();
         var definition = _draft.Imported;
@@ -410,16 +411,6 @@ public partial class SimulatorHud
             addToListBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             addToListBtn.CustomMinimumSize = new(0, 52);
         }
-
-        var paramBtn = Button(actionsRow, "USE PARAMETRIC ROBOT", () =>
-        {
-            _draft = Game.Profile.Copy();
-            _draft.Imported = null;
-            NavigateTo(ScreenType.RobotCreator);
-        });
-        paramBtn.Disabled = _importBusy;
-        paramBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        paramBtn.CustomMinimumSize = new(0, 52);
 
         var backBtn = Button(actionsRow, "BACK / DISCARD", () =>
         {

@@ -36,6 +36,13 @@ public partial class AimPreview : Node3D
         if (!Game.Running || robot == null) { _line.Visible = false; return; }
         _line.Visible = Game.ShowTrajectory;
         PieceKind? kind = robot.Inventory.Count > 0 ? robot.Inventory[0] : null;
+        if (kind == null)
+        {
+            Status = "NO PIECE IN ROBOT"; Speed = 0; FlightTime = 0; _clear = false;
+            PollenClear = false; NectarClear = false;
+            robot.UpdateShotReadiness(false, default);
+            return;
+        }
         bool changed = robot != _lastRobot || kind != _lastKind || Game.AimFlower != _lastTarget || robot.Inventory.Count != _lastCount;
         _lastRobot = robot; _lastKind = kind; _lastTarget = Game.AimFlower;
         _lastCount = robot.Inventory.Count;
@@ -43,42 +50,63 @@ public partial class AimPreview : Node3D
         if (!changed && _timer > 0) return;
         _timer = .05f;
         var origin = robot.LaunchOrigin; var target = Game.Target(robot);
-        PollenClear = ShotPlanner.TrySolve(robot, origin, target, .03556f, out var pollen, out PollenDiagnosis);
-        NectarClear = ShotPlanner.TrySolve(robot, origin, target, .04572f, out var nectar, out NectarDiagnosis);
-        PollenSpeed = pollen.Velocity.Length(); NectarSpeed = nectar.Velocity.Length();
-        PollenFlightTime = pollen.FlightTime; NectarFlightTime = nectar.FlightTime;
-        if (kind == null)
+        ShotPlanner.Plan plan;
+        ShotPlanner.Diagnosis diagnosis;
+        if (kind == PieceKind.Pollen)
         {
-            Status = "NO PIECE IN ROBOT"; Speed = 0; FlightTime = 0; _clear = false; robot.UpdateShotReadiness(false, default); PlanUpdates++; return;
+            PollenClear = ShotPlanner.TrySolve(robot, origin, target, .03556f, out var pollen, out PollenDiagnosis);
+            PollenSpeed = pollen.Velocity.Length(); PollenFlightTime = pollen.FlightTime;
+            if (!PollenClear)
+            {
+                NectarClear = false; NectarDiagnosis = PollenDiagnosis; NectarSpeed = 0; NectarFlightTime = 0;
+            }
+            else
+            {
+                NectarClear = ShotPlanner.TrySolve(robot, origin, target, .04572f, out var nectar, out NectarDiagnosis);
+                NectarSpeed = nectar.Velocity.Length(); NectarFlightTime = nectar.FlightTime;
+            }
+            plan = pollen; _clear = PollenClear; diagnosis = PollenDiagnosis;
         }
-        var plan = kind == PieceKind.Pollen ? pollen : nectar;
-        _clear = kind == PieceKind.Pollen ? PollenClear : NectarClear;
+        else
+        {
+            NectarClear = ShotPlanner.TrySolve(robot, origin, target, .04572f, out var nectar, out NectarDiagnosis);
+            NectarSpeed = nectar.Velocity.Length(); NectarFlightTime = nectar.FlightTime;
+            if (NectarClear)
+            {
+                PollenClear = true; PollenDiagnosis = new ShotPlanner.Diagnosis(ShotPlanner.Failure.None, "", target);
+                PollenSpeed = nectar.Velocity.Length(); PollenFlightTime = nectar.FlightTime;
+            }
+            else
+            {
+                PollenClear = ShotPlanner.TrySolve(robot, origin, target, .03556f, out var pollen, out PollenDiagnosis);
+                PollenSpeed = pollen.Velocity.Length(); PollenFlightTime = pollen.FlightTime;
+            }
+            plan = nectar; _clear = NectarClear; diagnosis = NectarDiagnosis;
+        }
         FlightTime = plan.FlightTime; Speed = plan.Velocity.Length(); PlanUpdates++;
-        var diagnosis = kind == PieceKind.Pollen ? PollenDiagnosis : NectarDiagnosis;
         Status = _clear ? "CLEAR PATH" : diagnosis.Message;
         robot.UpdateShotReadiness(_clear, diagnosis);
     }
     public override void _Process(double delta)
     {
         var robot = Game.Player;
-        _line.Visible = Game.Running && robot != null && robot.Inventory.Count > 0;
+        bool hasPieces = robot != null && robot.Inventory.Count > 0;
+        _line.Visible = Game.Running && hasPieces && Game.ShowTrajectory;
         if (!_line.Visible) { Speed = 0; _mesh.ClearSurfaces(); return; }
         Vector3 origin = robot.LaunchOrigin, target = Game.Target(robot);
         DisplayOrigin = origin; DisplayEnd = target;
         _mesh.ClearSurfaces();
         _mesh.SurfaceBegin(Mesh.PrimitiveType.Triangles, _clear ? _green : _red);
-        if (_clear && FlightTime > 0)
+        float time = FlightTime > 0 ? FlightTime : Mathf.Clamp(origin.DistanceTo(target) / 5.5f, 0.35f, 1.2f);
+        Vector3 velocity = ShotPlanner.VelocityFor(origin, target, time);
+        if (_clear) Speed = velocity.Length();
+        Vector3 previous = origin;
+        for (int i = 1; i <= 48; i++)
         {
-            Vector3 velocity = ShotPlanner.VelocityFor(origin, target, FlightTime);
-            Speed = velocity.Length();
-            Vector3 previous = origin;
-            for (int i = 1; i <= 48; i++)
-            {
-                Vector3 point = ShotPlanner.PositionAt(origin, velocity, FlightTime * i / 48);
-                Segment(_mesh, previous, point); previous = point;
-            }
+            Vector3 point = ShotPlanner.PositionAt(origin, velocity, time * i / 48);
+            Segment(_mesh, previous, point);
+            previous = point;
         }
-        else Segment(_mesh, origin, target);
         Segment(_mesh, target - Vector3.Right * .07f, target + Vector3.Right * .07f);
         Segment(_mesh, target - Vector3.Forward * .07f, target + Vector3.Forward * .07f);
         _mesh.SurfaceEnd();
