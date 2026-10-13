@@ -15,6 +15,11 @@ public partial class RobotAgent : CharacterBody3D
     public readonly List<PieceKind> Inventory = new();
     public int Capacity = 4;
     public bool Intake;
+    public bool ToggleIntake()
+    {
+        if (!Game.DrivingAllowed || Game.Hud.MenuVisible) return false;
+        Intake = !Intake; return true;
+    }
     public Vector3 Command;
     public float TurnCommand;
     public bool FireCommand;
@@ -143,6 +148,9 @@ public partial class RobotAgent : CharacterBody3D
             }
             _decisionTime=0;
         }
+        if(Rig?.PhysicalChassis!=null) Rig.StepPhysicalDrive();
+        else
+        {
         Vector3 desired = Command.LimitLength() * Speed;
         Vector3 velocity = Velocity; velocity.Y = 0;
         Velocity = velocity.MoveToward(desired, Acceleration * dt);
@@ -177,6 +185,7 @@ public partial class RobotAgent : CharacterBody3D
         }
         if (position.Y!=0) { position.Y=0; Position=position; }
         _lastCollisionPosition=position;
+        }
         _intakeTime+=delta;
         if (_intakeTime+1e-9>=Simulation.ControlStep)
         {

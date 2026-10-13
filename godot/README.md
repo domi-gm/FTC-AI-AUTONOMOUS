@@ -6,7 +6,7 @@ Main menu > IMPORT ROBOT (STL / URDF). For STL, select units (normally mm for Fu
 and the source up axis (normally Z). Add one STL for the whole robot, or up
 to 32 STL files exported at a common assembly origin. Keep screws and other
 stationary hardware in their rigid subassembly rather than exporting each bolt.
-ASCII and binary STL are supported; at most 200,000 triangles total and 32 MB
+ASCII and binary STL are supported; at most 2,000,000 triangles total and 32 MB
 per file. Use a coarser Fusion export if the limit is exceeded.
 
 Review the 3D preview, dimensions and front orientation; drag the preview to
@@ -52,13 +52,13 @@ validation, manual override and imported URDF reference coordinates.
 for the lift, visible HUD buttons and a close camera. It does not save a profile.
 
 The chassis retains the existing kinematic CharacterBody3D drive. Other groups
-use actual RigidBody3D links, HingeJoint3D or Generic6DofJoint3D constraints, box
-colliders and automatically approximated inertia/centre of mass. Chassis mass
-is metadata; it does not affect the existing kinematic drive. Internal robot
+use actual RigidBody3D links, HingeJoint3D or Generic6DofJoint3D constraints. URDF
+COM and full inertia tensors are applied by orienting each body in its principal
+frame; visual and joint reference frames are preserved. Legacy manual bodies use
+box estimates. Chassis mass is metadata in legacy kinematic drive mode. Internal robot
 self-collisions are disabled; links collide with the arena, pieces and other
 robots. Motors control joint velocity, not physical chassis wheel propulsion.
-Intake/shooting retain virtual gameplay anchors. This is a prototype, with no
-CAD-calibrated inertia, transmissions, closed-loop mechanisms or actuator tuning.
+Intake/shooting retain virtual gameplay anchors. Closed-loop mechanical transmissions and actuator tuning still require calibration.
 Maximum 32 bodies / 31 joints, arranged as a tree rooted at chassis. Moving
 groups need geometry and one incoming joint; invalid graphs cannot be applied.
 
@@ -92,9 +92,10 @@ valid position. The editor displays absolute URDF coordinates; internal motion
 is relative to that baked pose. Geometry-free fixed coordinate links are folded
 into parent bodies. Geometry-free moving links, unsupported joint/mesh types,
 mimic couplings and malformed/disconnected graphs are rejected explicitly.
-COM/inertia tensors, material appearance, separate collision geometry when visuals
-exist, dynamics/calibration/safety extensions and ROS control plugins are not
-applied; import notes explain these approximations. Joint limits define motor
+COM/inertia tensors and joint dynamics damping/friction are applied. Missing tensors
+in legacy mass-only profiles use box estimates. Material appearance, separate collision
+geometry when visuals exist, calibration/safety extensions and ROS control plugins
+are not applied; import notes explain these approximations. Joint limits define motor
 caps, not a complete motor model. Motors without positive speed/effort remain
 disabled. Existing simulator size/body/mesh budgets and hinge range limits apply.
 
@@ -238,3 +239,22 @@ Godot --headless --path . -- --shot-test runs 11 checks for readiness, inventory
 diagnostics, refined physical scoring and multi-launcher changes. The tested
 uncapped benchmark measured ~214 FPS driving and ~95 with four bots, with p99
 bot frames around 59 ms; refinement adds cost to blocked attempts.
+
+## Physical Beebot import
+
+The `ftc_simulator` URDF extension enables an optional physical mecanum chassis.
+Four DC motor torque/speed curves, wheel inertia, contact slip, traction limits
+and reaction torque drive the real rigid bodies. Ordinary URDF/STL profiles retain
+the previous kinematic chassis. Joint dynamics use relative velocity and equal
+parent/child reaction forces. Drive wheels use cylindrical colliders; other
+physical-drive links use box approximations with a 2 mm skin to avoid phantom
+floor contacts in thin CAD parts. This contact model approximates the rollers;
+it does not instantiate thousands of traction spikes or simulate deformable rubber.
+
+The full Beebot package is at `D:/beebot-urdf-work/beebot_sim_description/urdf/beebot.urdf`.
+The original high detail package is preserved separately. See
+[Beebot: dinamica, import si depanare](docs/BEEBOT_DINAMICA.md).
+
+Additional checks: `--physical-drive-test` (gravity, forward/strafe/yaw, pause and
+snapshots) and `--robot-import-test <URDF path>` (the actual complete Beebot).
+The original URDF/STL, mechanism and joint-control suites also remain available.

@@ -53,6 +53,20 @@ public static class UrdfImportChecks
             }
             Reject(text.Replace("../meshes/slider.stl", "../../../escape.stl"), "Mesh traversal outside the selected package rejected");
             Reject(text.Replace("../meshes/slider.stl", "https://example.com/slider.stl"), "Remote mesh URLs rejected without network access");
+            Reject(text.Replace("<mass value=\"0.1\" />", "<mass value=\"0.1\" /><inertia ixx=\"-1\" iyy=\"1\" izz=\"1\" ixy=\"0\" ixz=\"0\" iyz=\"0\" />"), "Nonphysical inertia is rejected before profile mutation");
+            var axes=new Basis(new Vector3(1,2,3).Normalized(),.73f);
+            var tensor=RobotMassProperties.Tensor(axes,new float[]{.02f,.03f,.04f,0,0,0});
+            var principal=RobotMassProperties.Principal(tensor);
+            var reconstructed=RobotMassProperties.Tensor(principal.Axes,new[]{principal.Moments.X,principal.Moments.Y,principal.Moments.Z,0,0,0});
+            Check(tensor.Zip(reconstructed).All(pair=>Mathf.Abs(pair.First-pair.Second)<1e-6f),"Full off-diagonal inertia decomposes and reconstructs correctly");
+            string dynamicsText=text.Replace("<mass value=\"0.1\" />", "<origin xyz=\"0.02 0.01 0.03\" rpy=\"0.3 0.4 0.5\" /><mass value=\"0.1\" /><inertia ixx=\"0.0002\" iyy=\"0.0003\" izz=\"0.0004\" ixy=\"0\" ixz=\"0\" iyz=\"0\" />")
+                .Replace("<limit", "<dynamics damping=\"0.02\" friction=\"0.003\" /><limit");
+            System.IO.File.WriteAllText(invalid,dynamicsText);
+            var dynamicDefinition=UrdfRobotReader.Read(invalid).Store();
+            var dynamicShoulder=dynamicDefinition.Joints.First(j=>j.Name=="shoulder");
+            Check(dynamicShoulder.Damping==.02f && dynamicShoulder.JointFriction==.003f && dynamicDefinition.Bodies.First(b=>b.Id==dynamicShoulder.ChildBody).InertiaSource!=null,"URDF imports rotated COM, inertia and joint resistance");
+            var dynamicCopy=dynamicDefinition.Copy();dynamicCopy.Bodies[1].InertiaSource[0]=99;
+            Check(dynamicDefinition.Bodies[1].InertiaSource[0]!=99,"Physics arrays have independent profile ownership");
             Reject(text.Replace("../meshes/slider.stl", "../meshes/missing.stl"), "Missing mesh reported instead of importing a partial robot");
             Reject(text.Replace("../meshes/slider.stl", "../meshes/slider.dae"), "Unsupported mesh format reported explicitly");
             Reject(text.Replace("type=\"prismatic\"", "type=\"floating\""), "Unsupported floating joint rejected instead of silently changing its type");
@@ -85,6 +99,18 @@ public static class UrdfImportChecks
             var start = ImportedRobot.GetBodyBounds(d, lift.ChildBody).GetCenter();
             Check(Mathf.Abs(game.Player.ToLocal(rig.Links[lift.ChildBody].GlobalPosition).Y - start.Y - .12f) < .005f,
                 "URDF imported slider physically reaches its original travel limit");
+            game.Profile=new RobotProfile{Imported=dynamicDefinition};game.Reset();game.Hud.ShowPause(false);
+            rig=game.Player.Rig;foreach(var body in rig.Links.Values) body.GravityScale=0;
+            var spec=dynamicDefinition.Bodies.First(b=>b.Id==dynamicShoulder.ChildBody);
+            var actualBody=rig.Links[spec.Id];
+            var actualCenter=game.Player.ToLocal(actualBody.GlobalPosition);
+            var expectedCenter=ImportedRobot.ConvertPoint(RobotMechanismValidation.Vec(spec.CenterOfMassSource),dynamicDefinition)+ImportedRobot.NormalizationOffset(dynamicDefinition);
+            Check(actualCenter.DistanceTo(expectedCenter)<1e-5f && actualBody.Inertia.X>0,"Runtime uses explicit CAD COM and principal moments");
+            Check(Mathf.Abs(rig.JointPosition(dynamicShoulder.Id)-dynamicShoulder.ReferencePosition)<1e-5f,"Principal body orientation does not change joint zero/reference");
+            rig.SetMotorCommand(dynamicShoulder.Id,1);
+            for(int i=0;i<Engine.PhysicsTicksPerSecond*2;i++) await game.ToSignal(game.GetTree(),SceneTree.SignalName.PhysicsFrame);
+            Check(Mathf.Abs(rig.JointPosition(dynamicShoulder.Id)-.7f)<.015f,"Hinge with rotated inertia and damping reaches its URDF limit through physics");
+            game.Profile=new RobotProfile{Imported=d};game.Reset();game.Hud.ShowPause(false);
             var flags = BindingFlags.NonPublic | BindingFlags.Instance;
             typeof(SimulatorHud).GetMethod("ImportSetup", flags).Invoke(game.Hud, null);
             var draft = (RobotProfile)typeof(SimulatorHud).GetField("_draft", flags).GetValue(game.Hud); var previous = draft.Imported;

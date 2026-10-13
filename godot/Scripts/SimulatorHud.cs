@@ -3231,7 +3231,7 @@ public partial class SimulatorHud : CanvasLayer
 
         var modeBtn = CreateButton(modeRow, Game.RobotCentricDrive
             ? "ACTIVE: ROBOT-CENTRIC (DRIVES IN ROBOT HEADING DIRECTION) [N]"
-            : "ACTIVE: CAMERA-CENTRIC (DRIVES RELATIVE TO CAMERA ANGLE) [N]", () =>
+            : "ACTIVE: FIELD-CENTRIC (FIXED W/A/S/D DIRECTIONS) [N]", () =>
         {
             Game.RobotCentricDrive = !Game.RobotCentricDrive;
             Game.SaveControls();
@@ -3242,7 +3242,7 @@ public partial class SimulatorHud : CanvasLayer
 
         var modeExpl = new Label
         {
-            Text = "Press [N] during gameplay to toggle drive mode on the fly. Robot-centric drives forward in the direction the robot is facing.",
+            Text = "Default: field-centric. W/S and A/D keep the same directions on the field when the robot or camera turns. Press [N] to choose robot-centric driving relative to the robot heading.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         modeExpl.AddThemeFontSizeOverride("font_size", 14);
@@ -3359,7 +3359,7 @@ public partial class SimulatorHud : CanvasLayer
             ("Right / Middle Mouse Drag", "Orbit 3D arena camera"),
             ("Shift + Mouse Drag", "Pan arena field camera"),
             ("Mouse Wheel", "Zoom camera in / out"),
-            ("N Key", "Toggle Robot-Centric vs Camera-Centric drive"),
+            ("N Key", "Toggle fixed Field-Centric vs Robot-Centric drive"),
             ("F2 Key", "Toggle waypoint path editor"),
             ("P Key", "Follow waypoint path in practice"),
             ("F5 / F9 Keys", "Quick-save / quick-load practice arena state")
@@ -3449,7 +3449,7 @@ public partial class SimulatorHud : CanvasLayer
             var driveCard = CreateCard(_dialogBody, "DRIVING ORIENTATION & PATHING TOOLS");
             var driveLabel = new Label
             {
-                Text = "• Driving Orientation [N]: Press [N] during gameplay to toggle between Robot-Centric (drives forward in robot heading direction) and Camera-Centric (drives relative to screen camera).\n• Waypoint Path Editor [F2]: Press F2 to drop waypoints on the floor mat and P to trace paths for autonomous trajectory rehearsal.\n• Trajectory Line: Turn on the trajectory prediction arc in Settings to visualize firing arc and target intersection heights.",
+                Text = "• Driving Orientation [N]: Field-Centric is the default: W/A/S/D directions stay fixed on the field even when the robot or camera turns. Press [N] to choose Robot-Centric driving relative to the robot heading.\n• Waypoint Path Editor [F2]: Press F2 to drop waypoints on the floor mat and P to trace paths for autonomous trajectory rehearsal.\n• Trajectory Line: Turn on the trajectory prediction arc in Settings to visualize firing arc and target intersection heights.",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart
             };
             driveLabel.AddThemeFontSizeOverride("font_size", 15);

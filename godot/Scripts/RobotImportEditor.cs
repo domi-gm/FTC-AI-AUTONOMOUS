@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
@@ -148,7 +149,7 @@ public partial class SimulatorHud
             // URDF MODE: Kinematics & coordinate frames are automatic!
             // No need for units/orientation or manual mechanism articulation setup.
             // =========================================================================
-            var sourceCard = CreateCard(_dialogBody, "CAD SOURCE: URDF KINEMATIC PACKAGE");
+            var sourceCard = CreateCard(_dialogBody, "CAD SOURCE: URDF PACKAGE");
 
             var urdfNotice = new Label
             {
@@ -191,7 +192,7 @@ public partial class SimulatorHud
 
                 var statsLabel = new Label
                 {
-                    Text = $"Width {bounds.Size.X * 100:0.0} × length {bounds.Size.Z * 100:0.0} × height {bounds.Size.Y * 100:0.0} cm\n{definition.Parts.Count} STL meshes • {ImportedRobot.TriangleCount(definition):N0} triangles\nKinematic chassis + {Math.Max(0, definition.Bodies.Count - 1)} dynamic links • {definition.Joints.Count} automatic joints",
+                    Text = $"Width {bounds.Size.X * 100:0.0} × length {bounds.Size.Z * 100:0.0} × height {bounds.Size.Y * 100:0.0} cm\n{definition.Parts.Count} STL meshes • {ImportedRobot.TriangleCount(definition):N0} triangles\n{(definition.PhysicalDrive == null ? "Kinematic" : "Physical mecanum")} chassis + {Math.Max(0, RobotMassProperties.BodyRoots(definition).Values.Distinct().Count() - 1)} physical groups • {definition.Joints.Count} automatic joints",
                     AutowrapMode = TextServer.AutowrapMode.WordSmart
                 };
                 statsLabel.AddThemeFontSizeOverride("font_size", 16);
@@ -279,7 +280,7 @@ public partial class SimulatorHud
 
                 var statsLabel = new Label
                 {
-                    Text = $"Width {bounds.Size.X * 100:0.0} × length {bounds.Size.Z * 100:0.0} × height {bounds.Size.Y * 100:0.0} cm\n{definition.Parts.Count} STL meshes • {ImportedRobot.TriangleCount(definition):N0} triangles\nKinematic chassis + {Math.Max(0, definition.Bodies.Count - 1)} dynamic links • {definition.Joints.Count} joints",
+                    Text = $"Width {bounds.Size.X * 100:0.0} × length {bounds.Size.Z * 100:0.0} × height {bounds.Size.Y * 100:0.0} cm\n{definition.Parts.Count} STL meshes • {ImportedRobot.TriangleCount(definition):N0} triangles\n{(definition.PhysicalDrive == null ? "Kinematic" : "Physical mecanum")} chassis + {Math.Max(0, RobotMassProperties.BodyRoots(definition).Values.Distinct().Count() - 1)} physical groups • {definition.Joints.Count} joints",
                     AutowrapMode = TextServer.AutowrapMode.WordSmart
                 };
                 statsLabel.AddThemeFontSizeOverride("font_size", 16);
@@ -456,7 +457,7 @@ public partial class SimulatorHud
                             throw new InvalidDataException("Select STL files of at most 32 MB each.");
                         var bytes = System.IO.File.ReadAllBytes(path); var points = StlReader.Parse(bytes);
                         triangles += points.Length / 3;
-                        if (triangles > StlReader.MaxTriangles) throw new InvalidDataException("Selection exceeds 200,000 triangles. Export coarser meshes from Fusion.");
+                        if (triangles > StlReader.MaxTriangles) throw new InvalidDataException("Selection exceeds 2,000,000 triangles. Export coarser meshes from Fusion.");
                         items.Add((path, bytes, points));
                     }
                     return items;

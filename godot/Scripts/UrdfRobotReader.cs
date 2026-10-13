@@ -40,7 +40,7 @@ public static class UrdfRobotReader
         public string Name, Parent, Child, Type;
         public Transform3D Origin;
         public Vector3 Axis;
-        public float Lower, Upper, Reference, Speed, Effort;
+        public float Lower, Upper, Reference, Speed, Effort, Damping, Friction;
     }
     public static Result Read(string path)
     {
@@ -83,8 +83,12 @@ public static class UrdfRobotReader
                 j.Speed = Number(Required(limit, "velocity")); j.Effort = Number(Required(limit, "effort"));
                 if (j.Speed < 0 || j.Effort < 0) throw Bad("Negative motor limits on '" + j.Name + "'.");
             }
-            if (Single(joint, "dynamics") != null || Single(joint, "safety_controller") != null || Single(joint, "calibration") != null)
-                result.Notes.Add(j.Name + ": dynamics, safety and calibration extensions are not applied.");
+            var dynamics=Single(joint,"dynamics");
+            j.Damping=Number(dynamics?.Attribute("damping")?.Value ?? "0");
+            j.Friction=Number(dynamics?.Attribute("friction")?.Value ?? "0");
+            if(j.Damping<0 || j.Friction<0) throw Bad("Negative joint dynamics on '"+j.Name+"'.");
+            if (Single(joint, "safety_controller") != null || Single(joint, "calibration") != null)
+                result.Notes.Add(j.Name + ": safety and calibration extensions are not applied.");
         }
         var roots = links.Keys.Where(n => !incoming.ContainsKey(n)).ToArray();
         if (roots.Length != 1) throw Bad("URDF must be one connected tree with a single root link.");
@@ -126,7 +130,17 @@ public static class UrdfRobotReader
             var inertia = Single(links[name], "inertial");
             float mass = inertia == null ? 1 : Number(Required(Single(inertia, "mass", true), "value"));
             if (inertia == null) result.Notes.Add(name + ": no mass supplied; using 1 kg.");
-            result.Definition.Bodies.Add(new RobotBodyDefinition { Id = ids[name], Name = name, MassKg = mass });
+            var body=new RobotBodyDefinition { Id = ids[name], Name = name, MassKg = mass };
+            if(Single(inertia,"inertia") != null)
+            {
+                var tensor=Single(inertia,"inertia",true);
+                var values=new[]{"ixx","iyy","izz","ixy","ixz","iyz"}.Select(k=>Number(Required(tensor,k))).ToArray();
+                RobotMassProperties.Principal(values);
+                var frame=poses[name]*Origin(Single(inertia,"origin"));
+                body.CenterOfMassSource=Array(frame.Origin);
+                body.InertiaSource=RobotMassProperties.Tensor(frame.Basis,values);
+            }
+            result.Definition.Bodies.Add(body);
             int index = 0;
             foreach (var visual in geometries[name])
             {
@@ -143,7 +157,7 @@ public static class UrdfRobotReader
                 }
                 else points = Primitive(shape);
                 triangles += points.Length / 3;
-                if (triangles > StlReader.MaxTriangles) throw Bad("URDF geometry exceeds 200,000 triangles.");
+                if (triangles > StlReader.MaxTriangles) throw Bad("URDF geometry exceeds 2,000,000 triangles.");
                 var transform = poses[name] * Origin(Single(visual, "origin"));
                 for (int i = 0; i < points.Length; i++)
                 {
@@ -162,9 +176,42 @@ public static class UrdfRobotReader
                 ParentBody = Body(j.Parent), ChildBody = ids[j.Child], Type = j.Type == "continuous" ? "revolute" : j.Type,
                 PivotSource = Array(frame.Origin), AxisSource = Array(frame.Basis * j.Axis), LimitsEnabled = j.Type != "continuous",
                 Lower = j.Lower - j.Reference, Upper = j.Upper - j.Reference, ReferencePosition = j.Reference,
-                MaxSpeed = j.Speed, MaxEffort = j.Effort, MotorEnabled = j.Type != "fixed" && j.Speed > 0 && j.Effort > 0 });
+                MaxSpeed = j.Speed, MaxEffort = j.Effort, Damping=j.Damping, JointFriction=j.Friction,
+                MotorEnabled = j.Type != "fixed" && j.Speed > 0 && j.Effort > 0 });
         }
         RobotMechanismValidation.ValidateStructure(result.Definition);
+        var drive=Single(robot,"ftc_simulator");
+        if(drive != null)
+        {
+            if(Required(drive,"drivetrain")!="mecanum") throw Bad("Unsupported physical drivetrain.");
+            var config=new RobotDriveDefinition{Radius=Number(Required(drive,"wheel_radius")),FreeSpeed=Number(Required(drive,"free_speed")),StallTorque=Number(Required(drive,"stall_torque")),Traction=Number(drive.Attribute("traction")?.Value ?? "0.7"),SlipStiffness=Number(drive.Attribute("slip_stiffness")?.Value ?? "100")};
+            foreach(var wheel in drive.Elements("wheel"))
+            {
+                var joint=result.Definition.Joints.SingleOrDefault(j=>j.Name==Required(wheel,"joint"));
+                if(joint==null) throw Bad("Unknown drivetrain wheel joint.");
+                config.Wheels.Add(new RobotDriveWheel{JointId=joint.Id,RollerSign=Number(Required(wheel,"roller_sign")),TurnSign=Number(Required(wheel,"turn_sign"))});
+            }
+            config.Validate(result.Definition);result.Definition.PhysicalDrive=config;
+            result.Definition.QuarterTurns=int.Parse(drive.Attribute("front_quarter_turns")?.Value ?? "0",CultureInfo.InvariantCulture);
+            if(result.Definition.QuarterTurns<0 || result.Definition.QuarterTurns>3) throw Bad("Invalid front orientation.");
+            result.Notes.Add("Physical mecanum chassis enabled: DC motor curve and approximate anisotropic roller traction; tune against measurements.");
+            foreach(var control in drive.Elements("joint_control"))
+            {
+                var joint=result.Definition.Joints.SingleOrDefault(j=>j.Name==Required(control,"joint"));
+                if(joint==null)throw Bad("Unknown joint control.");
+                joint.ToggleEnabled=true;joint.ToggleKey=control.Attribute("key")?.Value ?? "";
+                joint.ClosedPosition=Number(Required(control,"closed"));joint.OpenPosition=Number(Required(control,"open"));
+            }
+            var intakeIds=new HashSet<string>();
+            foreach(var control in drive.Elements("intake_motor"))
+            {
+                var joint=result.Definition.Joints.SingleOrDefault(j=>j.Name==Required(control,"joint"));
+                if(joint==null || !intakeIds.Add(joint.Id)) throw Bad("Unknown or duplicate intake joint.");
+                joint.IntakePower=Number(Required(control,"power"));
+                if(joint.IntakePower==0) throw Bad("Intake motor power must be nonzero.");
+            }
+            RobotMechanismValidation.ValidateStructure(result.Definition);
+        }
         // Validate bounds before any draft/profile mutation or asset writes.
         foreach (var id in ids.Values)
         {
@@ -175,7 +222,7 @@ public static class UrdfRobotReader
         var all = result.Meshes.SelectMany(m => m.Points).ToArray(); var overall = new Aabb(all[0], Vector3.Zero);
         foreach (var point in all) overall = overall.Expand(point);
         if (overall.Size.X > 3 || overall.Size.Y > 3 || overall.Size.Z > 3) throw Bad("URDF robot exceeds 3 m on an axis. Check mesh scale.");
-        result.Notes.Add("Joints and motion limits imported automatically. Link inertia/COM and collisions remain box approximations; materials and ROS control plugins are not applied.");
+        result.Notes.Add("Joints, COM, full inertia and joint damping/friction imported. Collisions remain box approximations; materials and ROS control plugins are not applied.");
         result.Definition.ImportNotes = result.Notes.Distinct().ToList(); return result;
     }
     private static XElement Single(XElement parent, string name, bool required = false)

@@ -5,6 +5,9 @@ __pycache__/
 .pytest_cache/
 backups/
 docs/
+!godot/docs/
+godot/docs/*
+!godot/docs/BEEBOT_DINAMICA.md
 research/
 artifacts/
 .reference-pedro/

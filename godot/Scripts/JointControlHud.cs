@@ -8,6 +8,7 @@ public partial class SimulatorHud
     private VBoxContainer _jointControlsList;
     private ImportedRobotRig _buttonRig;
     private readonly Dictionary<string, Button> _jointButtons = new();
+    private Button _intakeButton;
     private void CreateJointControls()
     {
         _jointControls = new PanelContainer { AnchorLeft = 1, AnchorRight = 1, AnchorTop = 1, AnchorBottom = 1,
@@ -25,17 +26,25 @@ public partial class SimulatorHud
         var rig = Game.Player?.Rig;
         if (rig != _buttonRig)
         {
-            _buttonRig = rig; _jointButtons.Clear();
+            _buttonRig = rig; _jointButtons.Clear(); _intakeButton = null;
             foreach (var child in _jointControlsList.GetChildren()) { _jointControlsList.RemoveChild(child); child.QueueFree(); }
             if (rig != null)
             {
                 _jointControlsList.AddChild(new Label { Text = "JOINT CONTROLS" });
+                _intakeButton = Button(_jointControlsList, "INTAKE", () => rig.Actor.ToggleIntake());
+                _intakeButton.Name = "IntakeToggle";
+                _intakeButton.FocusMode = Control.FocusModeEnum.None;
                 foreach (var spec in rig.Definition.Joints.Where(j => j.ToggleEnabled))
                     _jointButtons[spec.Id] = Button(_jointControlsList, spec.Name, () => rig.ToggleJoint(spec.Id));
             }
         }
-        _jointControls.Visible = rig != null && _jointButtons.Count > 0 && !MenuVisible && Game.Running;
+        _jointControls.Visible = rig != null && !MenuVisible && Game.Running;
         if (!_jointControls.Visible) return;
+        bool full = rig.Actor.Inventory.Count >= rig.Actor.Capacity;
+        _intakeButton.Text = $"[J / {Game.KeyIntake}] INTAKE: {(rig.Actor.Intake ? "ON" : "OFF")}\n" +
+            (full ? $"FULL ({rig.Actor.Inventory.Count}/{rig.Actor.Capacity}) — shoot first" : $"Pieces: {rig.Actor.Inventory.Count}/{rig.Actor.Capacity}");
+        _intakeButton.TooltipText = "Toggle intake. Approach floor pieces with the front of the robot. A full inventory requires shooting before collecting more.";
+        _intakeButton.Disabled = !Game.DrivingAllowed;
         foreach (var spec in rig.Definition.Joints.Where(j => j.ToggleEnabled))
         {
             var button = _jointButtons[spec.Id];

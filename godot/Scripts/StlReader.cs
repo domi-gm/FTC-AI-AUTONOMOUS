@@ -8,7 +8,7 @@ using System.Text;
 /// <summary>STL geometry only: the format has no units, assemblies or joints.</summary>
 public static class StlReader
 {
-    public const int MaxTriangles = 200000;
+    public const int MaxTriangles = 2000000;
     public const int MaxBytes = 32 * 1024 * 1024;
     public static Vector3[] Read(string path)
     {
@@ -25,7 +25,7 @@ public static class StlReader
             uint count = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(80, 4));
             if (84L + 50L * count == data.Length)
             {
-                if (count == 0 || count > MaxTriangles) throw new InvalidDataException("STL needs 1–200,000 triangles.");
+                if (count == 0 || count > MaxTriangles) throw new InvalidDataException("STL needs 1–2,000,000 triangles.");
                 var vertices = new Vector3[checked((int)count * 3)];
                 using var reader = new BinaryReader(new MemoryStream(data));
                 reader.BaseStream.Position = 84;
@@ -79,5 +79,5 @@ public static class StlReader
             if ((points[i + 1] - points[i]).Cross(points[i + 2] - points[i]).LengthSquared() > 0) { valid = true; break; }
         if (!valid) throw new InvalidDataException("STL has no non-degenerate triangles.");
     }
-    private static InvalidDataException Bad() => new("Invalid or incomplete ASCII STL (max 200,000 triangles).");
+    private static InvalidDataException Bad() => new("Invalid or incomplete ASCII STL (max 2,000,000 triangles).");
 }

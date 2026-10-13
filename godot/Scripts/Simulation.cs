@@ -19,7 +19,7 @@ public partial class Simulation : Node3D
     public float Countdown = 0f;
     public bool OpponentAi = true;
     public bool ShowTrajectory = true;
-    public bool RobotCentricDrive = true;
+    public bool RobotCentricDrive = false;
     public Key KeyForward = Key.W;
     public Key KeyBackward = Key.S;
     public Key KeyLeft = Key.A;
@@ -458,7 +458,7 @@ public partial class Simulation : Node3D
 
     public sealed class ControlsConfig
     {
-        public bool RobotCentric { get; set; } = true;
+        public bool RobotCentric { get; set; } = false;
         public Key DriveMode { get; set; } = Key.N;
         public Key Forward { get; set; } = Key.W;
         public Key Backward { get; set; } = Key.S;
@@ -545,7 +545,7 @@ public partial class Simulation : Node3D
 
     public void ResetKeyBindings()
     {
-        RobotCentricDrive = true;
+        RobotCentricDrive = false;
         KeyDriveMode = Key.N;
         KeyForward = Key.W;
         KeyBackward = Key.S;
@@ -809,6 +809,8 @@ public partial class Simulation : Node3D
 if (OS.GetCmdlineUserArgs().Contains("--stl-test")) CallDeferred(nameof(StlTest));
 if (OS.GetCmdlineUserArgs().Contains("--mechanism-test")) CallDeferred(nameof(MechanismTest));
 if (OS.GetCmdlineUserArgs().Contains("--urdf-test")) CallDeferred(nameof(UrdfTest));
+if (OS.GetCmdlineUserArgs().Contains("--physical-drive-test")) CallDeferred(nameof(PhysicalDriveTest));
+if (OS.GetCmdlineUserArgs().Contains("--robot-import-test")) CallDeferred(nameof(CadRobotTest));
 if (OS.GetCmdlineUserArgs().Contains("--joint-controls-test")) CallDeferred(nameof(JointControlsTest));
 if (OS.GetCmdlineUserArgs().Contains("--mechanism-demo")) Hud.CallDeferred(nameof(SimulatorHud.ShowMechanismDemo));
 if (OS.GetCmdlineUserArgs().Contains("--joint-controls-demo")) CallDeferred(nameof(JointControlsDemo));
@@ -818,6 +820,8 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
     private void StlTest() => StlImportChecks.Run(this);
     private async void MechanismTest() => await RobotMechanismChecks.Run(this);
     private async void UrdfTest() => await UrdfImportChecks.Run(this);
+    private async void PhysicalDriveTest() => await PhysicalDriveChecks.Run(this);
+    private async void CadRobotTest() => await CadRobotChecks.Run(this);
     private async void JointControlsTest() => await JointControlChecks.Run(this);
     public void Reset(bool start = true)
     {
@@ -1049,6 +1053,14 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         if (ball.ShotConfirmed || ball.ShotRobotIndex<0 || ball.LinearVelocity.Length()>.35f) return;
         ball.ShotConfirmed=true; Robots[ball.ShotRobotIndex].ShotsMade++;
     }
+    public Vector3 ManualDriveDirection(Vector2 input, RobotAgent robot)
+    {
+        // Field axes stay fixed even when the robot or orbit camera turns.
+        var direction = new Vector3(input.X, 0, input.Y);
+        if (RobotCentricDrive) direction = robot.GlobalBasis * direction;
+        direction.Y = 0;
+        return direction.LimitLength();
+    }
     private void ReadPlayer(RobotAgent robot, bool second)
     {
         if (TrainingGround)
@@ -1102,7 +1114,7 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             : new Vector3((Held(KeyRight) ? 1 : 0) - (Held(KeyLeft) ? 1 : 0), 0, (Held(KeyBackward) ? 1 : 0) - (Held(KeyForward) ? 1 : 0));
         if (v.LengthSquared() > 0)
         {
-            Vector3 worldDir = RobotCentricDrive ? (robot.GlobalBasis * new Vector3(v.X, 0, v.Z)) : Camera.ToGroundMovement(new Vector2(v.X, v.Z));
+            Vector3 worldDir = ManualDriveDirection(new Vector2(v.X, v.Z), robot);
             worldDir.Y = 0;
             robot.Command = worldDir.Normalized();
         }
@@ -1125,7 +1137,7 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
         ref bool lastIntake = ref (second ? ref _lastIntakePressedSecond : ref _lastIntakePressed);
         if (intakePressed && !lastIntake)
         {
-            robot.Intake = !robot.Intake;
+            robot.ToggleIntake();
         }
         lastIntake = intakePressed;
         robot.FireCommand = Held(second ? Key.Slash : KeyLaunch);
@@ -1136,7 +1148,7 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             if (axes.Length() > .15f)
             {
                 if (!second) PathEditor.Following = false;
-                Vector3 worldJoy = RobotCentricDrive ? (robot.GlobalBasis * new Vector3(axes.X, 0, axes.Y)) : Camera.ToGroundMovement(new Vector2(axes.X, axes.Y));
+                Vector3 worldJoy = ManualDriveDirection(axes, robot);
                 worldJoy.Y = 0;
                 robot.Command = worldJoy.LimitLength(1f);
             }
@@ -1145,7 +1157,7 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             ref bool lastJoy = ref (second ? ref _lastJoyIntakePressedSecond : ref _lastJoyIntakePressed);
             if (joyIntake && !lastJoy)
             {
-                robot.Intake = !robot.Intake;
+                robot.ToggleIntake();
             }
             lastJoy = joyIntake;
             robot.FireCommand |= Input.IsJoyButtonPressed(pad, JoyButton.RightShoulder);
@@ -1186,7 +1198,7 @@ if (OS.GetCmdlineUserArgs().Contains("--shot-test")) CallDeferred(MethodName.Sho
             else if (k.PhysicalKeycode == KeyDriveMode)
             {
                 RobotCentricDrive = !RobotCentricDrive;
-                Status = RobotCentricDrive ? "Drive Mode: Robot-Centric (Heading)" : "Drive Mode: Camera-Centric (Screen)";
+                Status = RobotCentricDrive ? "Drive Mode: Robot-Centric (Heading)" : "Drive Mode: Field-Centric (Fixed W/A/S/D)";
                 SaveControls();
             }
             else if (k.PhysicalKeycode == Key.B && Practice && Running) SpawnBall(PieceKind.Pollen, Player.Position + Player.Front * .5f + Vector3.Up * .12f);

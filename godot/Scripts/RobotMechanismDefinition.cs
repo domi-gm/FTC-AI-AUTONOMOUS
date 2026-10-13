@@ -9,7 +9,14 @@ public sealed class RobotBodyDefinition
     public string Name { get; set; } = "Chassis";
     public float MassKg { get; set; } = 1;
     public float Friction { get; set; } = .6f;
-    public RobotBodyDefinition Copy() => (RobotBodyDefinition)MemberwiseClone();
+    public float[] CenterOfMassSource { get; set; }
+    public float[] InertiaSource { get; set; } // xx yy zz xy xz yz in kg m².
+    public RobotBodyDefinition Copy()
+    {
+        var copy=(RobotBodyDefinition)MemberwiseClone();
+        copy.CenterOfMassSource=CenterOfMassSource == null ? null : (float[])CenterOfMassSource.Clone();
+        copy.InertiaSource=InertiaSource == null ? null : (float[])InertiaSource.Clone();return copy;
+    }
 }
 
 public sealed class RobotJointDefinition
@@ -30,6 +37,9 @@ public sealed class RobotJointDefinition
     public bool MotorEnabled { get; set; }
     public float MaxSpeed { get; set; } = 1;
     public float MaxEffort { get; set; } = 2; // Nm for revolute; N for prismatic.
+    public float Damping { get; set; } // Nm s/rad or N s/m.
+    public float JointFriction { get; set; } // Nm or N, opposing motion.
+    public float IntakePower { get; set; } // Signed motor power while gameplay intake is enabled; zero means unbound.
     public bool ToggleEnabled { get; set; }
     public string ToggleKey { get; set; } = ""; // Empty means on-screen button only.
     public float ClosedPosition { get; set; } // Absolute coordinate: rad / m, including URDF reference.
@@ -62,15 +72,29 @@ public static class RobotMechanismValidation
                 || body.MassKg < .001f || body.MassKg > 500 || body.Friction < 0 || body.Friction > 2)
                 throw new ArgumentException("Invalid or duplicate rigid group; mass 0.001–500 kg, friction 0–2.");
         if (!ids.Contains("chassis") || definition.Parts.Any(p => !ids.Contains(p.BodyId))) throw new ArgumentException("Every STL must belong to a known group, including chassis.");
+        foreach(var body in definition.Bodies)
+        {
+            if ((body.CenterOfMassSource == null)!=(body.InertiaSource == null)) throw new ArgumentException("COM and inertia must be supplied together.");
+            if(body.InertiaSource != null)
+            {
+                if(!Vector(body.CenterOfMassSource)) throw new ArgumentException("Invalid COM.");
+                RobotMassProperties.Principal(body.InertiaSource);
+            }
+        }
         var jointIds = new HashSet<string>(); var parents = new Dictionary<string, string>(); var keys = new HashSet<string>();
         foreach (var joint in definition.Joints)
         {
+            if (joint != null && (!float.IsFinite(joint.IntakePower) || Mathf.Abs(joint.IntakePower)>1
+                || (joint.IntakePower!=0 && (!joint.MotorEnabled || joint.Type!="revolute" || joint.LimitsEnabled || joint.ToggleEnabled
+                    || definition.PhysicalDrive?.Wheels.Any(w=>w.JointId==joint.Id)==true))))
+                throw new ArgumentException("Intake bindings require a continuous motor joint and power between -1 and 1, excluding drive wheels.");
             if (joint == null || !Id(joint.Id) || !jointIds.Add(joint.Id) || !Name(joint.Name) || !ids.Contains(joint.ParentBody)
                 || !ids.Contains(joint.ChildBody) || joint.ChildBody == "chassis" || joint.ParentBody == joint.ChildBody
                 || !parents.TryAdd(joint.ChildBody, joint.ParentBody) || !new[] { "fixed", "revolute", "prismatic" }.Contains(joint.Type)
                 || !Vector(joint.PivotSource) || !Vector(joint.AxisSource) || Vec(joint.AxisSource).LengthSquared() < .000001f
                 || Vec(joint.AxisSource).LengthSquared() > 1000000 || Vec(joint.PivotSource).Abs().Length() > 10000000
-                || !float.IsFinite(joint.Lower + joint.Upper + joint.MaxSpeed + joint.MaxEffort + joint.ReferencePosition)
+                || !float.IsFinite(joint.Lower + joint.Upper + joint.MaxSpeed + joint.MaxEffort + joint.ReferencePosition + joint.Damping + joint.JointFriction)
+                || joint.Damping < 0 || joint.JointFriction < 0 || joint.Damping > 10000 || joint.JointFriction > 10000
                 || joint.MaxSpeed < 0 || joint.MaxSpeed > 1000 || joint.MaxEffort < 0 || joint.MaxEffort > 10000
                 || (joint.MotorEnabled && (joint.MaxSpeed == 0 || joint.MaxEffort == 0))
                 || (joint.Type == "fixed" && joint.MotorEnabled)) throw new ArgumentException("Invalid joint, axis, motor or duplicate child connection.");

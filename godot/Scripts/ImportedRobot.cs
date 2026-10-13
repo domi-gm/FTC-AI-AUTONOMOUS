@@ -23,8 +23,9 @@ public sealed class ImportedRobotDefinition
     public List<string> ImportNotes { get; set; } = new();
     public List<RobotBodyDefinition> Bodies { get; set; } = new();
     public List<RobotJointDefinition> Joints { get; set; } = new();
+    public RobotDriveDefinition PhysicalDrive { get; set; }
     public ImportedRobotDefinition Copy() => new() { Parts = Parts.Select(p => p.Copy()).ToList(), Units = Units, UpAxis = UpAxis, QuarterTurns = QuarterTurns,
-        Bodies = Bodies.Select(b => b.Copy()).ToList(), Joints = Joints.Select(j => j.Copy()).ToList(), SourceFormat = SourceFormat, ImportNotes = new(ImportNotes) };
+        Bodies = Bodies.Select(b => b.Copy()).ToList(), Joints = Joints.Select(j => j.Copy()).ToList(), SourceFormat = SourceFormat, ImportNotes = new(ImportNotes), PhysicalDrive=PhysicalDrive?.Copy() };
     public void Validate()
     {
         if (Parts == null || Parts.Count > 32 || !new[] { "mm", "cm", "m", "in" }.Contains(Units)
@@ -37,6 +38,7 @@ public sealed class ImportedRobotDefinition
                 || !part.Asset[..64].All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
                 throw new ArgumentException("Invalid imported STL reference.");
         RobotMechanismValidation.ValidateStructure(this);
+        PhysicalDrive?.Validate(this);
     }
 }
 
@@ -45,6 +47,8 @@ public static class ImportedRobot
 {
     private const string AssetFolder = "user://robot-assets";
     private static readonly Dictionary<string, Vector3[]> Cache = new();
+    private static readonly Dictionary<string,Aabb> SourceBounds = new();
+    private static readonly Dictionary<string,ArrayMesh> RenderMeshes = new();
     public static string AssetPath(string asset) => ProjectSettings.GlobalizePath(AssetFolder + "/" + asset);
     public static ImportedPart Import(string path)
     {
@@ -79,7 +83,7 @@ public static class ImportedRobot
     {
         p *= UnitScale(definition);
         if (definition.UpAxis == "Z") p = new(p.X, p.Z, -p.Y);
-        return p.Rotated(Vector3.Up, definition.QuarterTurns * Mathf.Pi / 2);
+        return definition.QuarterTurns switch {1=>new(p.Z,p.Y,-p.X),2=>new(-p.X,p.Y,-p.Z),3=>new(-p.Z,p.Y,p.X),_=>p};
     }
     public static Vector3 NormalizationOffset(ImportedRobotDefinition definition)
     {
@@ -89,20 +93,30 @@ public static class ImportedRobot
     {
         var offset = NormalizationOffset(definition);
         bool first = true; Aabb bounds = default;
-        foreach (var part in definition.Parts.Where(p => p.BodyId == id)) foreach (var point in Points(part))
+        foreach (var part in definition.Parts.Where(p => p.BodyId == id)) for(int corner=0;corner<8;corner++)
         {
-            var p = ConvertPoint(point, definition) + offset;
+            var p = ConvertPoint(PartBounds(part).GetEndpoint(corner), definition) + offset;
             if (first) { bounds = new(p, Vector3.Zero); first = false; } else bounds = bounds.Expand(p);
         }
         if (first || bounds.Size.X < .001f || bounds.Size.Y < .001f || bounds.Size.Z < .001f)
             throw new InvalidDataException("Rigid group '" + id + "' needs a non-flat STL mesh (minimum 1 mm per axis).");
         return bounds;
     }
+    private static Aabb PartBounds(ImportedPart part)
+    {
+        if(!SourceBounds.TryGetValue(part.Asset,out var bounds))
+        {
+            var points=Points(part);bounds=new Aabb(points[0],Vector3.Zero);
+            foreach(var point in points)bounds=bounds.Expand(point);
+            if(SourceBounds.Count>=128)SourceBounds.Clear();SourceBounds[part.Asset]=bounds;
+        }
+        return bounds;
+    }
     public static int TriangleCount(ImportedRobotDefinition definition)
     {
         definition.Validate(); int count = 0;
         foreach (var part in definition.Parts) count += Points(part).Length / 3;
-        if (count > StlReader.MaxTriangles) throw new InvalidDataException("Robot exceeds 200,000 triangles. Export coarser STL meshes.");
+        if (count > StlReader.MaxTriangles) throw new InvalidDataException("Robot exceeds 2,000,000 triangles. Export coarser STL meshes.");
         return count;
     }
     public static Aabb Bounds(ImportedRobotDefinition definition)
@@ -112,10 +126,10 @@ public static class ImportedRobot
         bool first = true; Aabb bounds = default;
         foreach (var part in definition.Parts)
         {
-            var points = Points(part);
-            foreach (var point in points)
+            var partBounds=PartBounds(part);
+            for(int corner=0;corner<8;corner++)
             {
-                var p = ConvertPoint(point, definition);
+                var p = ConvertPoint(partBounds.GetEndpoint(corner), definition);
                 if (first) { bounds = new(p, Vector3.Zero); first = false; } else bounds = bounds.Expand(p);
             }
         }
@@ -133,6 +147,9 @@ public static class ImportedRobot
         int index = 0;
         foreach (var part in definition.Parts)
         {
+            string key=part.Asset+"/"+definition.Units+"/"+definition.UpAxis+"/"+definition.QuarterTurns+"/"+offset;
+            if(!RenderMeshes.TryGetValue(key,out var mesh))
+            {
             var points = Points(part); var surface = new SurfaceTool(); surface.Begin(Mesh.PrimitiveType.Triangles);
             for (int i = 0; i < points.Length; i += 3)
             {
@@ -145,9 +162,12 @@ public static class ImportedRobot
                 // Godot uses clockwise front faces; normals are computed from the source STL winding.
                 surface.SetNormal(normal); surface.AddVertex(a); surface.AddVertex(c); surface.AddVertex(b);
             }
-            VisualFactory.Mesh(root, "RigidGroup" + index, surface.Commit(), Vector3.Zero,
-                index++ % 2 == 0 ? VisualFactory.Steel : new Color("adb8c5"));
+            mesh=surface.Commit();
+            if(RenderMeshes.Count>=64)RenderMeshes.Clear();RenderMeshes[key]=mesh;
             surface.Dispose();
+            }
+            VisualFactory.Mesh(root, "RigidGroup" + index, mesh, Vector3.Zero,
+                index++ % 2 == 0 ? VisualFactory.Steel : new Color("adb8c5"));
         }
         return root;
     }
